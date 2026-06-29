@@ -238,7 +238,7 @@ void __declspec(naked) DoUnlimiterStuffCodeCave2()
 
 	CarPartCount = CarPartPartsTableSize / SingleCarPartSize;
 
-	if (CarPartCount > 16000)
+	if (CarPartCount > 16384)
 	{
 		// Fix quantizers
 		injector::WriteMemory<int>(0x89D420, CarPartCount, true); // QuantPartIndex

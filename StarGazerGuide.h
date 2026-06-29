@@ -58,7 +58,7 @@ float __fastcall StarGazerGuide_GetNumberOfStars(DWORD* StarGazerGuide, void* ED
 		ForceCarStars = GetNumStarsFromRep(TheStarGazer.ForceRep);
 	}
 
-	if (ForceCarStars != -1.0f) return ForceCarStars;
+	if (ForceCarStars > 0.0f) return ForceCarStars;
 
 	DWORD* WideBodyPart = (DWORD*)ride[356 + CAR_SLOT_ID::WIDE_BODY];
 	DWORD* Part;
