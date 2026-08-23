@@ -147,12 +147,12 @@ bool IsMenuEmpty_BodyShop(int CarTypeID)
 	if (CarConfigs[CarTypeID].BodyShop.Quarter != 0) return 0;
 	if (CarConfigs[CarTypeID].BodyShop.Spoiler != 0) return 0;
 	if (CarConfigs[CarTypeID].BodyShop.Hood != 0) return 0;
-	if (!CarConfigs[CarTypeID].Main.SyncVisualPartsWithPhysics && CarConfigs[CarTypeID].BodyShop.Engine != 0) return 0;
+	if (!CarConfigs[CarTypeID].Main.SyncEngineWithPhysics && CarConfigs[CarTypeID].BodyShop.Engine != 0) return 0;
 	if (CarConfigs[CarTypeID].BodyShop.Trunk != 0) return 0;
 	if (CarConfigs[CarTypeID].BodyShop.RoofScoops != 0) return 0;
 	if (CarConfigs[CarTypeID].BodyShop.Interior != 0) return 0;
 	if (CarConfigs[CarTypeID].BodyShop.Roof != 0) return 0;
-	if (!CarConfigs[CarTypeID].Main.SyncVisualPartsWithPhysics && CarConfigs[CarTypeID].BodyShop.Brakes != 0) return 0;
+	if (!CarConfigs[CarTypeID].Main.SyncBrakesWithPhysics && CarConfigs[CarTypeID].BodyShop.Brakes != 0) return 0;
 	if (CarConfigs[CarTypeID].BodyShop.Headlights != 0) return 0;
 	if (CarConfigs[CarTypeID].BodyShop.Taillights != 0) return 0;
 	if (CarConfigs[CarTypeID].BodyShop.Mirrors != 0) return 0;

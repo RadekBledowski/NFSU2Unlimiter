@@ -78,7 +78,7 @@ int GetRimBrandIDFromHash(DWORD BrandNameHash)
     int RimBrandsCount = RimBrands.size();
     if (RimBrandsCount == -1) return 0;
 
-    for (int i = 0; i <= RimBrandsCount; i++)
+    for (int i = 0; i < RimBrandsCount; i++)
     {
         if (BrandNameHash == RimBrands[i].BrandNameHash)
         {

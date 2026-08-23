@@ -7,6 +7,10 @@
 #include "Helpers.h"
 #include "includes\ini.h"
 
+#include <algorithm>
+#include <string>
+#include <vector>
+
 void LoadCarConfigs()
 {
 	CarConfig ACarConfig;
@@ -29,6 +33,8 @@ void LoadCarConfigs()
 	DefaultCarConfig.Main.InductionType = mINI_ReadInteger(GeneralINI, "Main", "InductionType", 0);
 	DefaultCarConfig.Main.ScaleBrakesWithRims = mINI_ReadInteger(GeneralINI, "Main", "ScaleBrakesWithRims", 1);
 	DefaultCarConfig.Main.SyncVisualPartsWithPhysics = mINI_ReadInteger(GeneralINI, "Main", "SyncVisualPartsWithPhysics", 1);
+	DefaultCarConfig.Main.SyncEngineWithPhysics = mINI_ReadInteger(GeneralINI, "Main", "SyncEngineWithPhysics", DefaultCarConfig.Main.SyncVisualPartsWithPhysics) != 0;
+	DefaultCarConfig.Main.SyncBrakesWithPhysics = mINI_ReadInteger(GeneralINI, "Main", "SyncBrakesWithPhysics", DefaultCarConfig.Main.SyncVisualPartsWithPhysics) != 0;
 	DefaultCarConfig.Main.CanBeDrivenByAI = mINI_ReadInteger(GeneralINI, "Main", "CanBeDrivenByAI", 1) != 0;
 
 	// CarRenderInfo
@@ -591,6 +597,11 @@ void LoadCarConfigs()
 		ACarConfig.Main.InductionType = mINI_ReadInteger(CarINI, "Main", "InductionType", DefaultCarConfig.Main.InductionType);
 		ACarConfig.Main.ScaleBrakesWithRims = mINI_ReadInteger(CarINI, "Main", "ScaleBrakesWithRims", DefaultCarConfig.Main.ScaleBrakesWithRims);
 		ACarConfig.Main.SyncVisualPartsWithPhysics = mINI_ReadInteger(CarINI, "Main", "SyncVisualPartsWithPhysics", DefaultCarConfig.Main.SyncVisualPartsWithPhysics);
+		// If the car ini only sets the master flag, the per-category flags follow it.
+		ACarConfig.Main.SyncEngineWithPhysics = mINI_ReadInteger(CarINI, "Main", "SyncEngineWithPhysics",
+			mINI_ReadInteger(CarINI, "Main", "SyncVisualPartsWithPhysics", DefaultCarConfig.Main.SyncEngineWithPhysics)) != 0;
+		ACarConfig.Main.SyncBrakesWithPhysics = mINI_ReadInteger(CarINI, "Main", "SyncBrakesWithPhysics",
+			mINI_ReadInteger(CarINI, "Main", "SyncVisualPartsWithPhysics", DefaultCarConfig.Main.SyncBrakesWithPhysics)) != 0;
 		ACarConfig.Main.CanBeDrivenByAI = mINI_ReadInteger(CarINI, "Main", "CanBeDrivenByAI", DefaultCarConfig.Main.CanBeDrivenByAI) != 0;
 
 		// CarRenderInfo
@@ -1234,8 +1245,137 @@ void LoadCarConfigs()
 	CarConfigs = std::move(CarConfigs_temp); // Replace global list with temp
 }
 
+void LoadRimBrands_ApplyCountPatches(size_t VectorSize)
+{
+	int NumRimBrands = (int)(VectorSize > 0 ? VectorSize - 1 : 0) + 0x702;
+
+	injector::WriteMemory<short>(0x7A587D, NumRimBrands, true); // TranslateCustomizeCatToMarker
+	injector::WriteMemory<short>(0x7AFEAD, NumRimBrands, true); // GetMarkerNameFromCategory
+	injector::WriteMemory<short>(0x7B6098, NumRimBrands, true); // CarCustomizeManager::GetUnlockHash
+	injector::WriteMemory<short>(0x7BAD74, NumRimBrands, true); // CarCustomizeManager::IsCategoryLocked
+	injector::WriteMemory<short>(0x7BAF96, NumRimBrands, true); // CarCustomizeManager::IsCategoryLocked
+}
+
+// Folder mode: UnlimiterData\WheelBrands\*.ini, one brand per file.
+// Files starting with '_' are reserved (_Settings.ini, _Custom.ini).
+// Returns false if the folder is absent or holds no usable brand file, so the caller
+// can fall back to the legacy single-file _RimBrands.ini.
+bool LoadRimBrandsFromFolder()
+{
+	auto WheelBrandsDir = CurrentWorkingDirectory / "UnlimiterData" / "WheelBrands";
+
+	if (!std::filesystem::is_directory(WheelBrandsDir)) return false;
+
+	struct PendingBrand
+	{
+		RimBrand Brand;
+		int Order;
+		std::string FileName;
+	};
+
+	std::vector<PendingBrand> Pending;
+
+	// Index 0 is always the car-specific ("Custom") brand. Defaults match _RimBrands.ini Brand0.
+	RimBrand CustomBrand;
+	CustomBrand.BrandNameHash = bStringHash((char*)"");
+	CustomBrand.StringHash = bStringHash((char*)"RIMS_BRAND_CUSTOM");
+	CustomBrand.TextureHash = bStringHash((char*)"VISUAL_RIMS_BRAND_CUSTOM");
+	CustomBrand.NoRimSize = true;
+	CustomBrand.HideBrandName = true;
+	CustomBrand.AvailableForRegularCars = true;
+	CustomBrand.AvailableForSUVs = true;
+
+	bool FoundSettings = false;
+
+	try
+	{
+		for (const auto& entry : std::filesystem::directory_iterator(WheelBrandsDir))
+		{
+			if (!entry.is_regular_file()) continue;
+			if (entry.path().extension() != ".ini") continue;
+
+			std::string Stem = entry.path().stem().string();
+			if (Stem.empty()) continue;
+
+			mINI::INIFile BrandINIFile(entry.path().string());
+			mINI::INIStructure BrandINI;
+			BrandINIFile.read(BrandINI);
+
+			if (Stem[0] == '_') // reserved
+			{
+				if (_stricmp(Stem.c_str(), "_Settings") == 0)
+				{
+					RemoveRimSizeRestrictions = mINI_ReadInteger(BrandINI, "Settings", "RemoveRimSizeRestrictions", 0) != 0;
+					FoundSettings = true;
+				}
+				else if (_stricmp(Stem.c_str(), "_Custom") == 0)
+				{
+					CustomBrand.BrandNameHash = mINI_ReadHashS(BrandINI, "RimBrand", "BrandName", "");
+					CustomBrand.StringHash = mINI_ReadHashS(BrandINI, "RimBrand", "String", "RIMS_BRAND_CUSTOM");
+					CustomBrand.TextureHash = mINI_ReadHashS(BrandINI, "RimBrand", "Texture", "VISUAL_RIMS_BRAND_CUSTOM");
+					CustomBrand.NoRimSize = mINI_ReadInteger(BrandINI, "RimBrand", "NoRimSize", 1) != 0;
+					CustomBrand.HideBrandName = mINI_ReadInteger(BrandINI, "RimBrand", "HideBrandName", 1) != 0;
+					CustomBrand.AvailableForRegularCars = mINI_ReadInteger(BrandINI, "RimBrand", "AvailableForRegularCars", 1) != 0;
+					CustomBrand.AvailableForSUVs = mINI_ReadInteger(BrandINI, "RimBrand", "AvailableForSUVs", 1) != 0;
+				}
+				continue;
+			}
+
+			if (mINI_ReadInteger(BrandINI, "RimBrand", "Enabled", 1) == 0) continue;
+
+			PendingBrand P;
+			P.FileName = Stem;
+			P.Order = mINI_ReadInteger(BrandINI, "RimBrand", "Order", 1000);
+
+			// BrandName is hashed and matched against the BRAND_NAME attribute in Binary.
+			// Keep it plain ASCII - the displayed name comes from String.
+			P.Brand.BrandNameHash = mINI_ReadHashS(BrandINI, "RimBrand", "BrandName", Stem.c_str());
+			P.Brand.StringHash = mINI_ReadHashS(BrandINI, "RimBrand", "String", "RIMS_BRAND_STOCK");
+			P.Brand.TextureHash = mINI_ReadHashS(BrandINI, "RimBrand", "Texture", "VISUAL_RIMS_BRAND_STOCK");
+			P.Brand.NoRimSize = mINI_ReadInteger(BrandINI, "RimBrand", "NoRimSize", 0) != 0;
+			P.Brand.HideBrandName = mINI_ReadInteger(BrandINI, "RimBrand", "HideBrandName", 0) != 0;
+			P.Brand.AvailableForRegularCars = mINI_ReadInteger(BrandINI, "RimBrand", "AvailableForRegularCars", 1) != 0;
+			P.Brand.AvailableForSUVs = mINI_ReadInteger(BrandINI, "RimBrand", "AvailableForSUVs", 0) != 0;
+
+			Pending.push_back(P);
+		}
+	}
+	catch (const std::exception&)
+	{
+		return false; // unreadable folder - fall back to _RimBrands.ini
+	}
+
+	if (Pending.empty()) return false;
+
+	if (!FoundSettings) RemoveRimSizeRestrictions = false;
+
+	// Order first, filename second, so the list is stable across machines instead of
+	// depending on directory enumeration order.
+	std::sort(Pending.begin(), Pending.end(), [](const PendingBrand& a, const PendingBrand& b)
+	{
+		if (a.Order != b.Order) return a.Order < b.Order;
+		return _stricmp(a.FileName.c_str(), b.FileName.c_str()) < 0;
+	});
+
+	std::vector<RimBrand> RimBrands_temp;
+	RimBrands_temp.reserve(Pending.size() + 1);
+
+	RimBrands_temp.push_back(CustomBrand);
+
+	for (size_t i = 0; i < Pending.size(); i++) RimBrands_temp.push_back(Pending[i].Brand);
+
+	RimBrands = std::move(RimBrands_temp); // Replace global list with temp
+
+	LoadRimBrands_ApplyCountPatches(RimBrands.size());
+	return true;
+}
+
 void LoadRimBrands()
 {
+	// Preferred: one file per brand in UnlimiterData\WheelBrands
+	if (LoadRimBrandsFromFolder()) return;
+
+	// Fallback: legacy single-file _RimBrands.ini
 	RimBrand ARimBrand;
 	std::vector<RimBrand> RimBrands_temp;
 
@@ -1257,6 +1397,7 @@ void LoadRimBrands()
 		ARimBrand.StringHash = mINI_ReadHashS(RimBrandsINI, RimBrandID, "String", GetDefaultRimBrandString(i));
 		ARimBrand.TextureHash = mINI_ReadHashS(RimBrandsINI, RimBrandID, "Texture", GetDefaultRimBrandTexture(i));
 		ARimBrand.NoRimSize = mINI_ReadInteger(RimBrandsINI, RimBrandID, "NoRimSize", i ? 0 : 1) != 0;
+		ARimBrand.HideBrandName = mINI_ReadInteger(RimBrandsINI, RimBrandID, "HideBrandName", i ? 0 : 1) != 0; // FIXED: was never read
 		ARimBrand.AvailableForRegularCars = mINI_ReadInteger(RimBrandsINI, RimBrandID, "AvailableForRegularCars", GetDefaultRimBrandAvailableForRegularCars(i)) != 0;
 		ARimBrand.AvailableForSUVs = mINI_ReadInteger(RimBrandsINI, RimBrandID, "AvailableForSUVs", GetDefaultRimBrandAvailableForSUVs(i)) != 0;
 
@@ -1265,12 +1406,7 @@ void LoadRimBrands()
 
 	RimBrands = std::move(RimBrands_temp); // Replace global list with temp
 
-	NumRimBrands += 0x702;
-	injector::WriteMemory<short>(0x7A587D, NumRimBrands, true); // TranslateCustomizeCatToMarker
-	injector::WriteMemory<short>(0x7AFEAD, NumRimBrands, true); // GetMarkerNameFromCategory
-	injector::WriteMemory<short>(0x7B6098, NumRimBrands, true); // CarCustomizeManager::GetUnlockHash
-	injector::WriteMemory<short>(0x7BAD74, NumRimBrands, true); // CarCustomizeManager::IsCategoryLocked
-	injector::WriteMemory<short>(0x7BAF96, NumRimBrands, true); // CarCustomizeManager::IsCategoryLocked
+	LoadRimBrands_ApplyCountPatches(RimBrands.size());
 }
 
 void LoadVinylGroups()

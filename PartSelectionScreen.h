@@ -82,7 +82,7 @@ void __fastcall PartSelectionScreen_SetupBodyShop(DWORD* PartSelectionScreen, vo
             CarConfigs[CarTypeID].Names.BodyShopHood,
             0); // HOOD
 
-    if (CarConfigs[CarTypeID].BodyShop.Engine && !CarConfigs[CarTypeID].Main.SyncVisualPartsWithPhysics)
+    if (CarConfigs[CarTypeID].BodyShop.Engine && !CarConfigs[CarTypeID].Main.SyncEngineWithPhysics)
         PartSelectionScreen_AddCategory(
             PartSelectionScreen,
             CAR_SLOT_ID::ENGINE,
@@ -158,7 +158,7 @@ void __fastcall PartSelectionScreen_SetupBodyShop(DWORD* PartSelectionScreen, vo
             CarConfigs[CarTypeID].Icons.BodyShopRims,
             CarConfigs[CarTypeID].Names.BodyShopRims);
 
-    if (CarConfigs[CarTypeID].BodyShop.Brakes && !CarConfigs[CarTypeID].Main.SyncVisualPartsWithPhysics)
+    if (CarConfigs[CarTypeID].BodyShop.Brakes && !CarConfigs[CarTypeID].Main.SyncBrakesWithPhysics)
         PartSelectionScreen_AddCategory(
             PartSelectionScreen,
             CAR_SLOT_ID::FRONT_BRAKE,

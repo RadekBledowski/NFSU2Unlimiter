@@ -125,12 +125,10 @@ void __fastcall ChoosePaintShopCategory_Setup(DWORD* ChoosePaintShopCategory, vo
     if (*(int*)_FEDatabase == 1)
     {
         ChooseDecalCategory_ShowTotalPaintCost(ChoosePaintShopCategory);
-        if (CarCustomizeManager_GetPaintSetupPart((DWORD*)gCarCustomizeManager, 63)) // 63 = BASE_PAINT
-        {
-            int PaintSetupPrice = CarCustomizeManager_GetPaintSetupPrice((DWORD*)gCarCustomizeManager);
-            FEPrintf((char const*)ChoosePaintShopCategory[1], CT_bStringHash("TRADE_IN_CASH"), "%$d", PaintSetupPrice);
-        }
+        int PaintSetupPrice = CarCustomizeManager_GetPaintSetupPrice((DWORD*)gCarCustomizeManager);
+        FEPrintf((char const*)ChoosePaintShopCategory[1], CT_bStringHash("TRADE_IN_CASH"), "%$d", PaintSetupPrice);
     }
+    else
     {
         ChooseDecalCategory_HideTotalPaintCost(ChoosePaintShopCategory);
     }

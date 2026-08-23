@@ -533,10 +533,29 @@ DWORD* FindPartWithLevel(int CarType, unsigned int slot_id, int upgrade_level)
 void __fastcall RideInfo_SyncVisualPartsWithPhysics_Hook(DWORD* RideInfo, void* EDX_Unused, bool perf, bool random)
 {
     int CarType = *RideInfo;
+    MainSection& M = CarConfigs[CarType].Main;
 
-    if (CarConfigs[CarType].Main.SyncVisualPartsWithPhysics)
+    // Nothing at all is synced -> skip the call entirely
+    if (!M.SyncVisualPartsWithPhysics && !M.SyncEngineWithPhysics && !M.SyncBrakesWithPhysics)
+        return;
+
+    // Snapshot the visual slots the game function may overwrite. Aerodynamics is not in this
+    // list: it writes into RidePhysicsInfo rather than the parts array, so it stays tied to
+    // the master SyncVisualPartsWithPhysics flag.
+    DWORD SavedEngine     = RideInfo[356 + CAR_SLOT_ID::ENGINE];
+    DWORD SavedFrontBrake = RideInfo[356 + CAR_SLOT_ID::FRONT_BRAKE];
+    DWORD SavedRearBrake  = RideInfo[356 + CAR_SLOT_ID::REAR_BRAKE];
+
+    RideInfo_SyncVisualPartsWithPhysics(RideInfo, perf, random);
+
+    // Roll back whatever the user chose to keep manual
+    if (!M.SyncEngineWithPhysics)
+        RideInfo[356 + CAR_SLOT_ID::ENGINE] = SavedEngine;
+
+    if (!M.SyncBrakesWithPhysics)
     {
-        RideInfo_SyncVisualPartsWithPhysics(RideInfo, perf, random);
+        RideInfo[356 + CAR_SLOT_ID::FRONT_BRAKE] = SavedFrontBrake;
+        RideInfo[356 + CAR_SLOT_ID::REAR_BRAKE]  = SavedRearBrake;
     }
 }
 /*
