@@ -33,8 +33,8 @@ void LoadCarConfigs()
 	DefaultCarConfig.Main.InductionType = mINI_ReadInteger(GeneralINI, "Main", "InductionType", 0);
 	DefaultCarConfig.Main.ScaleBrakesWithRims = mINI_ReadInteger(GeneralINI, "Main", "ScaleBrakesWithRims", 1);
 	DefaultCarConfig.Main.SyncVisualPartsWithPhysics = mINI_ReadInteger(GeneralINI, "Main", "SyncVisualPartsWithPhysics", 1);
-	DefaultCarConfig.Main.SyncEngineWithPhysics = mINI_ReadInteger(GeneralINI, "Main", "SyncEngineWithPhysics", DefaultCarConfig.Main.SyncVisualPartsWithPhysics) != 0;
 	DefaultCarConfig.Main.SyncBrakesWithPhysics = mINI_ReadInteger(GeneralINI, "Main", "SyncBrakesWithPhysics", DefaultCarConfig.Main.SyncVisualPartsWithPhysics) != 0;
+	DefaultCarConfig.Main.MirrorBrakes = mINI_ReadInteger(GeneralINI, "Main", "MirrorBrakes", 1) != 0;
 	DefaultCarConfig.Main.CanBeDrivenByAI = mINI_ReadInteger(GeneralINI, "Main", "CanBeDrivenByAI", 1) != 0;
 
 	// CarRenderInfo
@@ -597,11 +597,9 @@ void LoadCarConfigs()
 		ACarConfig.Main.InductionType = mINI_ReadInteger(CarINI, "Main", "InductionType", DefaultCarConfig.Main.InductionType);
 		ACarConfig.Main.ScaleBrakesWithRims = mINI_ReadInteger(CarINI, "Main", "ScaleBrakesWithRims", DefaultCarConfig.Main.ScaleBrakesWithRims);
 		ACarConfig.Main.SyncVisualPartsWithPhysics = mINI_ReadInteger(CarINI, "Main", "SyncVisualPartsWithPhysics", DefaultCarConfig.Main.SyncVisualPartsWithPhysics);
-		// If the car ini only sets the master flag, the per-category flags follow it.
-		ACarConfig.Main.SyncEngineWithPhysics = mINI_ReadInteger(CarINI, "Main", "SyncEngineWithPhysics",
-			mINI_ReadInteger(CarINI, "Main", "SyncVisualPartsWithPhysics", DefaultCarConfig.Main.SyncEngineWithPhysics)) != 0;
 		ACarConfig.Main.SyncBrakesWithPhysics = mINI_ReadInteger(CarINI, "Main", "SyncBrakesWithPhysics",
 			mINI_ReadInteger(CarINI, "Main", "SyncVisualPartsWithPhysics", DefaultCarConfig.Main.SyncBrakesWithPhysics)) != 0;
+		ACarConfig.Main.MirrorBrakes = mINI_ReadInteger(CarINI, "Main", "MirrorBrakes", DefaultCarConfig.Main.MirrorBrakes) != 0;
 		ACarConfig.Main.CanBeDrivenByAI = mINI_ReadInteger(CarINI, "Main", "CanBeDrivenByAI", DefaultCarConfig.Main.CanBeDrivenByAI) != 0;
 
 		// CarRenderInfo

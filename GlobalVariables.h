@@ -339,8 +339,8 @@ typedef struct
 	int InductionType; // 0 = Turbo, 1 = Supercharger, 2+ = Twincharger??
 	bool ScaleBrakesWithRims;
 	bool SyncVisualPartsWithPhysics;
-	bool SyncEngineWithPhysics;
 	bool SyncBrakesWithPhysics;
+	bool MirrorBrakes;
 	bool CanBeDrivenByAI;
 } MainSection;
 

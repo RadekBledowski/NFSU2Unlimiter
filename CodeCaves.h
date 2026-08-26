@@ -207,6 +207,7 @@ void __declspec(naked) DoUnlimiterStuffCodeCave()
 	LoadRimBrands();
 	LoadVinylGroups();
 	LoadStarGazer();
+	LoadPartLinks();
 	LoadCameraInfo();
 
 	// Fix misc stats

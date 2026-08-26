@@ -1,5 +1,6 @@
 #include "stdio.h"
 #include "InGameFunctions.h"
+#include "PartLinks.h"
 
 void __declspec(naked) BuildRandomRideCodeCave()
 {
@@ -62,6 +63,30 @@ bool IsCustomWidebody(DWORD* part, int slot)
     return result;
 }
 
+DWORD* FindPartWithLevel(int CarType, unsigned int slot_id, int upgrade_level); // defined further down
+
+// The Body Shop only exposes FRONT_BUMPER... only FRONT_BRAKE as a category, and with brakes
+// decoupled from the performance package nothing keeps REAR_BRAKE in step any more. Mirror the
+// front brake's upgrade level onto the rear, which is what the game's own sync does.
+void MirrorFrontBrakeToRear(DWORD* RideInfo)
+{
+    int CarType = *RideInfo;
+
+    if (CarConfigs[CarType].Main.SyncBrakesWithPhysics) return;
+    if (!CarConfigs[CarType].Main.MirrorBrakes) return;
+
+    DWORD* FrontBrake = (DWORD*)RideInfo[356 + CAR_SLOT_ID::FRONT_BRAKE];
+    if (!FrontBrake) return;
+
+    int Level = *((BYTE*)FrontBrake + 5) >> 5;
+
+    DWORD* RearBrake = (DWORD*)RideInfo[356 + CAR_SLOT_ID::REAR_BRAKE];
+    if (RearBrake && (*((BYTE*)RearBrake + 5) >> 5) == Level) return;
+
+    DWORD* NewRearBrake = FindPartWithLevel(CarType, CAR_SLOT_ID::REAR_BRAKE, Level);
+    if (NewRearBrake) RideInfo[356 + CAR_SLOT_ID::REAR_BRAKE] = (DWORD)NewRearBrake;
+}
+
 bool __fastcall RideInfo_TrunkAudioSlotAvailable(DWORD* RideInfo, void* EDX_Unused, int CarSlotID)
 {
     DWORD* TrunkAudioPart;
@@ -122,6 +147,10 @@ void __fastcall RideInfo_UpdatePartsEnabled(DWORD* RideInfo, void* EDX_Unused)
     DWORD* CarSlotIDNames = (DWORD*)_CarSlotIDNames;
 
     CarType = *RideInfo;
+
+    MirrorFrontBrakeToRear(RideInfo);
+    PartLink_Resolve(RideInfo);
+
     memset(RideInfo + 526, 1u, 0xA8u);
     *((WORD*)RideInfo + 1136) = 257;
     for (i = CAR_SLOT_ID::__MODEL_FIRST; i < CAR_SLOT_ID::__NUM; ++i)
@@ -485,6 +514,8 @@ void __fastcall RideInfo_UpdatePartsEnabled(DWORD* RideInfo, void* EDX_Unused)
             break;
         }
     }
+
+    PartLink_ApplyVisibility(RideInfo);
 }
 
 void __fastcall RideInfo_SetPart(DWORD* RideInfo, void* EDX_Unused, int CarSlotID, DWORD* CarPartToSet)
@@ -535,27 +566,22 @@ void __fastcall RideInfo_SyncVisualPartsWithPhysics_Hook(DWORD* RideInfo, void* 
     int CarType = *RideInfo;
     MainSection& M = CarConfigs[CarType].Main;
 
-    // Nothing at all is synced -> skip the call entirely
-    if (!M.SyncVisualPartsWithPhysics && !M.SyncEngineWithPhysics && !M.SyncBrakesWithPhysics)
-        return;
+    if (!M.SyncVisualPartsWithPhysics && !M.SyncBrakesWithPhysics) return;
 
-    // Snapshot the visual slots the game function may overwrite. Aerodynamics is not in this
-    // list: it writes into RidePhysicsInfo rather than the parts array, so it stays tied to
-    // the master SyncVisualPartsWithPhysics flag.
-    DWORD SavedEngine     = RideInfo[356 + CAR_SLOT_ID::ENGINE];
+    // Snapshot the brake slots, let the game function run, then put them back if brakes are meant
+    // to be chosen by hand. Aerodynamics is not in this list: it writes into RidePhysicsInfo
+    // rather than the parts array, so it stays on the master flag.
     DWORD SavedFrontBrake = RideInfo[356 + CAR_SLOT_ID::FRONT_BRAKE];
-    DWORD SavedRearBrake  = RideInfo[356 + CAR_SLOT_ID::REAR_BRAKE];
+    DWORD SavedRearBrake = RideInfo[356 + CAR_SLOT_ID::REAR_BRAKE];
 
     RideInfo_SyncVisualPartsWithPhysics(RideInfo, perf, random);
-
-    // Roll back whatever the user chose to keep manual
-    if (!M.SyncEngineWithPhysics)
-        RideInfo[356 + CAR_SLOT_ID::ENGINE] = SavedEngine;
 
     if (!M.SyncBrakesWithPhysics)
     {
         RideInfo[356 + CAR_SLOT_ID::FRONT_BRAKE] = SavedFrontBrake;
-        RideInfo[356 + CAR_SLOT_ID::REAR_BRAKE]  = SavedRearBrake;
+        RideInfo[356 + CAR_SLOT_ID::REAR_BRAKE] = SavedRearBrake;
+
+        MirrorFrontBrakeToRear(RideInfo);
     }
 }
 /*

@@ -1,5 +1,6 @@
 #include "stdio.h"
 #include "InGameFunctions.h"
+#include "PartLinks.h"
 #include "ChooseRimBrand.h"
 
 #define _CurrCarSlotID 0x8389A8
@@ -17,8 +18,22 @@ void __fastcall PartSelectionScreen_DoSpecialScroll(DWORD* PartSelectionScreen, 
     }
 }
 
+// Skips a category whose slot is being governed by a part link. Same idea as the widebody block
+// taking its slots out of the strip: whatever was picked there would be overwritten anyway.
+void PartSelectionScreen_AddCategoryChecked(DWORD* PSS, unsigned int CarSlotID, unsigned int TextureHash, unsigned int LanguageHash, bool unk)
+{
+    if (PartLink_IsSlotHidden((int)CarSlotID)) return;
+
+    PartSelectionScreen_AddCategory(PSS, CarSlotID, TextureHash, LanguageHash, unk);
+}
+
 void __fastcall PartSelectionScreen_SetupBodyShop(DWORD* PartSelectionScreen, void* EDX_Unused)
 {
+    // gTheRideInfo IS the RideInfo object, not a pointer to one
+    PartLink_Resolve((DWORD*)gTheRideInfo);
+
+    if (PartLinkCatalogue) PartLink_DumpPartCatalogueOnce(*(int*)gTheRideInfo);
+
     // Read Part Options for the car
     DWORD FECarConfig = *(DWORD*)_FECarConfigRef;
     int CarTypeID = (*(int(__thiscall**)(int))(*(DWORD*)FECarConfig + 4))(FECarConfig);
@@ -27,7 +42,7 @@ void __fastcall PartSelectionScreen_SetupBodyShop(DWORD* PartSelectionScreen, vo
 
     PartSelectionScreen_ResetCategories(&PartSelectionScreen[19]);
     if (CarConfigs[CarTypeID].BodyShop.FrontBumper)
-        PartSelectionScreen_AddCategory(
+        PartSelectionScreen_AddCategoryChecked(
             PartSelectionScreen,
             CAR_SLOT_ID::FRONT_BUMPER,
             CarConfigs[CarTypeID].Icons.BodyShopFrontBumper,
@@ -35,7 +50,7 @@ void __fastcall PartSelectionScreen_SetupBodyShop(DWORD* PartSelectionScreen, vo
             0); // FRONT_BUMPER
     
     if (CarConfigs[CarTypeID].BodyShop.RearBumper)
-        PartSelectionScreen_AddCategory(
+        PartSelectionScreen_AddCategoryChecked(
             PartSelectionScreen,
             CAR_SLOT_ID::REAR_BUMPER,
             CarConfigs[CarTypeID].Icons.BodyShopRearBumper,
@@ -43,7 +58,7 @@ void __fastcall PartSelectionScreen_SetupBodyShop(DWORD* PartSelectionScreen, vo
             0); // REAR_BUMPER
     
     if (CarConfigs[CarTypeID].BodyShop.Skirt)
-        PartSelectionScreen_AddCategory(
+        PartSelectionScreen_AddCategoryChecked(
             PartSelectionScreen,
             CAR_SLOT_ID::SKIRT,
             CarConfigs[CarTypeID].Icons.BodyShopSkirt,
@@ -51,7 +66,7 @@ void __fastcall PartSelectionScreen_SetupBodyShop(DWORD* PartSelectionScreen, vo
             0); // SKIRT
     
     if (CarConfigs[CarTypeID].BodyShop.Fender)
-        PartSelectionScreen_AddCategory(
+        PartSelectionScreen_AddCategoryChecked(
             PartSelectionScreen,
             CAR_SLOT_ID::FENDER,
             CarConfigs[CarTypeID].Icons.BodyShopFender,
@@ -59,7 +74,7 @@ void __fastcall PartSelectionScreen_SetupBodyShop(DWORD* PartSelectionScreen, vo
             0); // FENDER
  
     if (CarConfigs[CarTypeID].BodyShop.Quarter)
-        PartSelectionScreen_AddCategory(
+        PartSelectionScreen_AddCategoryChecked(
             PartSelectionScreen,
             CAR_SLOT_ID::QUARTER,
             CarConfigs[CarTypeID].Icons.BodyShopQuarter,
@@ -67,7 +82,7 @@ void __fastcall PartSelectionScreen_SetupBodyShop(DWORD* PartSelectionScreen, vo
             0); // QUARTER
     
     if (CarConfigs[CarTypeID].BodyShop.Spoiler)
-        PartSelectionScreen_AddCategory(
+        PartSelectionScreen_AddCategoryChecked(
             PartSelectionScreen,
             CAR_SLOT_ID::SPOILER,
             CarConfigs[CarTypeID].Icons.BodyShopSpoiler,
@@ -75,15 +90,15 @@ void __fastcall PartSelectionScreen_SetupBodyShop(DWORD* PartSelectionScreen, vo
             0); // SPOILER
     
     if (CarConfigs[CarTypeID].BodyShop.Hood)
-        PartSelectionScreen_AddCategory(
+        PartSelectionScreen_AddCategoryChecked(
             PartSelectionScreen,
             CAR_SLOT_ID::HOOD,
             CarConfigs[CarTypeID].Icons.BodyShopHood,
             CarConfigs[CarTypeID].Names.BodyShopHood,
             0); // HOOD
 
-    if (CarConfigs[CarTypeID].BodyShop.Engine && !CarConfigs[CarTypeID].Main.SyncEngineWithPhysics)
-        PartSelectionScreen_AddCategory(
+    if (CarConfigs[CarTypeID].BodyShop.Engine && !CarConfigs[CarTypeID].Main.SyncVisualPartsWithPhysics)
+        PartSelectionScreen_AddCategoryChecked(
             PartSelectionScreen,
             CAR_SLOT_ID::ENGINE,
             CarConfigs[CarTypeID].Icons.BodyShopEngine,
@@ -91,21 +106,21 @@ void __fastcall PartSelectionScreen_SetupBodyShop(DWORD* PartSelectionScreen, vo
             0); // ENGINE
     
     if (CarConfigs[CarTypeID].BodyShop.Trunk)
-        PartSelectionScreen_AddCategory(PartSelectionScreen,
+        PartSelectionScreen_AddCategoryChecked(PartSelectionScreen,
             CAR_SLOT_ID::TRUNK,
             CarConfigs[CarTypeID].Icons.BodyShopTrunk,
             CarConfigs[CarTypeID].Names.BodyShopTrunk,
             0); // TRUNK
     
     if (CarConfigs[CarTypeID].BodyShop.RoofScoops)
-        PartSelectionScreen_AddCategory(PartSelectionScreen,
+        PartSelectionScreen_AddCategoryChecked(PartSelectionScreen,
             CAR_SLOT_ID::ROOF,
             CarConfigs[CarTypeID].Icons.BodyShopRoofScoops,
             CarConfigs[CarTypeID].Names.BodyShopRoofScoops,
             0); // ROOF
     
     if (CarConfigs[CarTypeID].BodyShop.Interior)
-        PartSelectionScreen_AddCategory(
+        PartSelectionScreen_AddCategoryChecked(
             PartSelectionScreen,
             CAR_SLOT_ID::BASE,
             CarConfigs[CarTypeID].Icons.BodyShopInterior,
@@ -113,7 +128,7 @@ void __fastcall PartSelectionScreen_SetupBodyShop(DWORD* PartSelectionScreen, vo
             0); // BASE
     
     if (CarConfigs[CarTypeID].BodyShop.Roof)
-        PartSelectionScreen_AddCategory(
+        PartSelectionScreen_AddCategoryChecked(
             PartSelectionScreen,
             CAR_SLOT_ID::TOP,
             CarConfigs[CarTypeID].Icons.BodyShopRoof,
@@ -121,7 +136,7 @@ void __fastcall PartSelectionScreen_SetupBodyShop(DWORD* PartSelectionScreen, vo
             0); // TOP
     
     if (CarConfigs[CarTypeID].BodyShop.Headlights)
-        PartSelectionScreen_AddCategory(
+        PartSelectionScreen_AddCategoryChecked(
             PartSelectionScreen,
             CAR_SLOT_ID::HEADLIGHT,
             CarConfigs[CarTypeID].Icons.BodyShopHeadlights,
@@ -129,7 +144,7 @@ void __fastcall PartSelectionScreen_SetupBodyShop(DWORD* PartSelectionScreen, vo
             0); // HEADLIGHT
     
     if (CarConfigs[CarTypeID].BodyShop.Taillights)
-        PartSelectionScreen_AddCategory(
+        PartSelectionScreen_AddCategoryChecked(
             PartSelectionScreen,
             CAR_SLOT_ID::BRAKELIGHT,
             CarConfigs[CarTypeID].Icons.BodyShopTaillights,
@@ -137,7 +152,7 @@ void __fastcall PartSelectionScreen_SetupBodyShop(DWORD* PartSelectionScreen, vo
             0); // BRAKELIGHT
     
     if (CarConfigs[CarTypeID].BodyShop.Mirrors)
-        PartSelectionScreen_AddCategory(
+        PartSelectionScreen_AddCategoryChecked(
             PartSelectionScreen,
             CAR_SLOT_ID::WING_MIRROR,
             CarConfigs[CarTypeID].Icons.BodyShopMirrors,
@@ -145,7 +160,7 @@ void __fastcall PartSelectionScreen_SetupBodyShop(DWORD* PartSelectionScreen, vo
             0); // WING_MIRROR
     
     if (CarConfigs[CarTypeID].BodyShop.Exhaust)
-        PartSelectionScreen_AddCategory(
+        PartSelectionScreen_AddCategoryChecked(
             PartSelectionScreen,
             CAR_SLOT_ID::EXHAUST,
             CarConfigs[CarTypeID].Icons.BodyShopExhaust,
@@ -159,7 +174,7 @@ void __fastcall PartSelectionScreen_SetupBodyShop(DWORD* PartSelectionScreen, vo
             CarConfigs[CarTypeID].Names.BodyShopRims);
 
     if (CarConfigs[CarTypeID].BodyShop.Brakes && !CarConfigs[CarTypeID].Main.SyncBrakesWithPhysics)
-        PartSelectionScreen_AddCategory(
+        PartSelectionScreen_AddCategoryChecked(
             PartSelectionScreen,
             CAR_SLOT_ID::FRONT_BRAKE,
             CarConfigs[CarTypeID].Icons.BodyShopBrakes,
@@ -173,7 +188,7 @@ void __fastcall PartSelectionScreen_SetupBodyShop(DWORD* PartSelectionScreen, vo
             CarConfigs[CarTypeID].Names.BodyShopCarbonFiber);
     
     if (CarConfigs[CarTypeID].BodyShop.WideBodyKits)
-        PartSelectionScreen_AddCategory(
+        PartSelectionScreen_AddCategoryChecked(
             PartSelectionScreen,
             CAR_SLOT_ID::WIDE_BODY,
             CarConfigs[CarTypeID].Icons.BodyShopWideBodyKits,
@@ -207,7 +222,7 @@ void __fastcall PartSelectionScreen_SetupBodyShop(DWORD* PartSelectionScreen, vo
     for (int i = 0; i < NumAttachments; i++)
     {
         if (AttachmentAvailable[i])
-            PartSelectionScreen_AddCategory(
+            PartSelectionScreen_AddCategoryChecked(
             PartSelectionScreen,
             CAR_SLOT_ID::__ATTACHMENT_MODEL_FIRST + i,
             AttachmentIcons[i],
@@ -370,7 +385,8 @@ int GetPartsList(int CarSlotID, DWORD* PartsBList, unsigned int PartAttribFilter
             if (*((char*)TheCarPart + 4) == CarPartID && PartAttribFilter == IsCF)
             {
                 if (UnlockSystem_IsCarPartUnlocked(CarCustomizeManager_GetPartUnlockFilter(), CarSlotID, TheCarPart, SomethingUnk)
-                    && (CarSlotID != 9 || (*((BYTE*)TheCarPart + 5) & 0x1F) != 5))
+                    && (CarSlotID != 9 || (*((BYTE*)TheCarPart + 5) & 0x1F) != 5)
+                    && !PartLink_IsHiddenFromMenu(TheCarPart))
                 {
                     NewBNode = (DWORD*)j__malloc(0x10u);
                     if (NewBNode)

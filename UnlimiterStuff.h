@@ -8,6 +8,9 @@
 using namespace std;
 
 int CarCount, ReplacementCar, CarArraySize, CarPartCount, CarPartPartsTableSize, TrafficCarCount, TheCounter;
+bool PresetCarsInCustomize, PresetCarsInQuickRace, UnlockSponsorCarsWithoutCheats;
+char PresetCarsCategoryName[64] = "Sponsor cars";
+
 bool AllNewCarsInitiallyUnlocked, AllNewCarsCanBeDrivenByAI, DisappearingWheelsFix, ExpandMemoryPools, AddOnOpponentsPartsFix, WorldCrashFixes, EnableFNGFixes, CabinNeonFix, RaceEngageDialogFix, RandomNameHook, ExtendFeCarLimits, DisableTextureReplacement, DisableLightFlareColors, ExportCameraInfoIni, StreamingTrafficCarManagerFix;
 
 BYTE RandomlyChooseableCarConfigsNorthAmerica[256], RandomlyChooseableCarConfigsRestOfWorld[256], RandomlyChooseableSUVs[256], CarLotUnlockData[256] = { 0 };
@@ -62,10 +65,11 @@ char AttachmentNameBuf[64];
 #include "Tachometer.h"
 #include "HUD_Customizer.h"
 #include "CustomHUD_Browser.h"
+#include "FeCarLimits.h"
+#include "PresetCars.h"
 #include "Helpers.h"
 #include "UnlimiterData.h"
 #include "CodeCaves.h"
-#include "FeCarLimits.h"
 
 int Init()
 {
@@ -93,7 +97,20 @@ int Init()
 	// Misc
 	ExpandMemoryPools = mINI_ReadInteger(Settings, "Misc", "ExpandMemoryPools", 1) != 0;
 	AddOnOpponentsPartsFix = mINI_ReadInteger(Settings, "Misc", "ForceStockPartsOnAddOnOpponents", 0) != 0;
-	ExtendFeCarLimits = mINI_ReadInteger(Settings, "Misc", "ExtendFeCarLimits", 0) != 0;// Doubles the amount of stock and tuned cars a player can have in a profile.
+	ExtendFeCarLimits = mINI_ReadInteger(Settings, "Misc", "ExtendFeCarLimits", 0) != 0;
+
+	// Part Links
+	PartLinksEnabled = mINI_ReadInteger(Settings, "PartLinks", "Enable", 0) != 0;
+	PartLinkRemoveHiddenParts = mINI_ReadInteger(Settings, "PartLinks", "RemoveHiddenParts", 1) != 0;
+	PartLinkHideMenuAttribute = mINI_ReadInteger(Settings, "PartLinks", "HideMenuAttribute", 1) != 0;
+	PartLinkDoorlineOverride = mINI_ReadInteger(Settings, "PartLinks", "DoorlineOverride", 1) != 0;
+	PartLinkCatalogue = mINI_ReadInteger(Settings, "PartLinks", "PartCatalogue", 0) != 0;
+
+	// Sponsor Cars
+	PresetCarsInCustomize = mINI_ReadInteger(Settings, "SponsorCars", "EnableInCustomize", 0) != 0;
+	PresetCarsInQuickRace = mINI_ReadInteger(Settings, "SponsorCars", "EnableInQuickRace", 0) != 0;
+	UnlockSponsorCarsWithoutCheats = mINI_ReadInteger(Settings, "SponsorCars", "UnlockWithoutCheats", 0) != 0;
+	sprintf(PresetCarsCategoryName, "%s", mINI_ReadString(Settings, "SponsorCars", "CategoryName", "Sponsor cars"));// Doubles the amount of stock and tuned cars a player can have in a profile.
 
 	// Debug
 	DisableTextureReplacement = mINI_ReadInteger(Settings, "Debug", "DisableTextureReplacement", 0) != 0;
@@ -608,6 +625,9 @@ int Init()
 	{
 		InitFeCarLimits();
 	}
+
+	InitPresetCars();
+	InitPartLinkDoorline();
 
 	if (ExportCameraInfoIni)
 	{
