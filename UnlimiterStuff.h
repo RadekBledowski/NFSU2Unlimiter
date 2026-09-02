@@ -8,8 +8,8 @@
 using namespace std;
 
 int CarCount, ReplacementCar, CarArraySize, CarPartCount, CarPartPartsTableSize, TrafficCarCount, TheCounter;
+BYTE CarCountByte; // CarCount clamped to a byte, assigned in DoUnlimiterStuffCodeCave
 bool PresetCarsInCustomize, PresetCarsInQuickRace, UnlockSponsorCarsWithoutCheats;
-char PresetCarsCategoryName[64] = "Sponsor cars";
 
 bool AllNewCarsInitiallyUnlocked, AllNewCarsCanBeDrivenByAI, DisappearingWheelsFix, ExpandMemoryPools, AddOnOpponentsPartsFix, WorldCrashFixes, EnableFNGFixes, CabinNeonFix, RaceEngageDialogFix, RandomNameHook, ExtendFeCarLimits, DisableTextureReplacement, DisableLightFlareColors, ExportCameraInfoIni, StreamingTrafficCarManagerFix;
 
@@ -81,10 +81,16 @@ int Init()
 	NFSU2UnlimiterSettingsINIFile.read(Settings);
 
 	// Main
-	ReplacementCar = mINI_ReadInteger(Settings, "Main", "ReplacementModel", 1);
+	// The shipped ini documents these as ReplacementCar and RandomNameHook, the code read
+	// ReplacementModel and EnableRandomNameHook, so neither key had ever done anything and both
+	// features always ran on their defaults. Documented name first, old name as a fallback so no
+	// existing ini changes meaning.
+	ReplacementCar = mINI_ReadInteger(Settings, "Main", "ReplacementCar",
+		mINI_ReadInteger(Settings, "Main", "ReplacementModel", 1));
 	AllNewCarsInitiallyUnlocked = mINI_ReadInteger(Settings, "Main", "AllNewCarsInitiallyUnlocked", 0) != 0;
 	AllNewCarsCanBeDrivenByAI = mINI_ReadInteger(Settings, "Main", "AllNewCarsCanBeDrivenByAI", 0) != 0;
-	RandomNameHook = mINI_ReadInteger(Settings, "Main", "EnableRandomNameHook", 1) != 0;
+	RandomNameHook = mINI_ReadInteger(Settings, "Main", "RandomNameHook",
+		mINI_ReadInteger(Settings, "Main", "EnableRandomNameHook", 1)) != 0;
 
 	// Fixes
 	DisappearingWheelsFix = mINI_ReadInteger(Settings, "Fixes", "DisappearingWheelsFix", 1) != 0;
@@ -99,24 +105,19 @@ int Init()
 	AddOnOpponentsPartsFix = mINI_ReadInteger(Settings, "Misc", "ForceStockPartsOnAddOnOpponents", 0) != 0;
 	ExtendFeCarLimits = mINI_ReadInteger(Settings, "Misc", "ExtendFeCarLimits", 0) != 0;
 
-	// Part Links
-	PartLinksEnabled = mINI_ReadInteger(Settings, "PartLinks", "Enable", 0) != 0;
-	PartLinkRemoveHiddenParts = mINI_ReadInteger(Settings, "PartLinks", "RemoveHiddenParts", 1) != 0;
-	PartLinkHideMenuAttribute = mINI_ReadInteger(Settings, "PartLinks", "HideMenuAttribute", 1) != 0;
-	PartLinkDoorlineOverride = mINI_ReadInteger(Settings, "PartLinks", "DoorlineOverride", 1) != 0;
-	PartLinkCatalogue = mINI_ReadInteger(Settings, "PartLinks", "PartCatalogue", 0) != 0;
 
 	// Sponsor Cars
 	PresetCarsInCustomize = mINI_ReadInteger(Settings, "SponsorCars", "EnableInCustomize", 0) != 0;
 	PresetCarsInQuickRace = mINI_ReadInteger(Settings, "SponsorCars", "EnableInQuickRace", 0) != 0;
 	UnlockSponsorCarsWithoutCheats = mINI_ReadInteger(Settings, "SponsorCars", "UnlockWithoutCheats", 0) != 0;
-	sprintf(PresetCarsCategoryName, "%s", mINI_ReadString(Settings, "SponsorCars", "CategoryName", "Sponsor cars"));// Doubles the amount of stock and tuned cars a player can have in a profile.
 
 	// Debug
 	DisableTextureReplacement = mINI_ReadInteger(Settings, "Debug", "DisableTextureReplacement", 0) != 0;
 	DisableLightFlareColors = mINI_ReadInteger(Settings, "Debug", "DisableLightFlareColors", 0) != 0;
 	ForceLightFlaresOn = mINI_ReadInteger(Settings, "Debug", "ForceLightFlaresOn", 0);
 	ExportCameraInfoIni = mINI_ReadInteger(Settings, "Debug", "ExportCameraInfo", 0) != 0;
+	PartLinkTrace = mINI_ReadInteger(Settings, "Debug", "PartLinkTrace", 0) != 0;
+	StaticCameraGenericFallback = mINI_ReadInteger(Settings, "Misc", "StaticCameraGenericFallback", 1) != 0;
 	EnableReleasePrintf = mINI_ReadInteger(Settings, "Debug", "EnableReleasePrintf", EnableReleasePrintf) != 0;
 
 	// Count Cars Automatically

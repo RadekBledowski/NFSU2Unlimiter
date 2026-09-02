@@ -20,6 +20,28 @@ void __fastcall PartSelectionScreen_DoSpecialScroll(DWORD* PartSelectionScreen, 
 
 // Skips a category whose slot is being governed by a part link. Same idea as the widebody block
 // taking its slots out of the strip: whatever was picked there would be overwritten anyway.
+// Carbon fibre is a single category covering several slots at once, so it cannot be gated per
+// slot the way the others are. It is dropped only when every slot it could offer is being driven
+// by a part link; otherwise the parts list filter takes care of the individual slots.
+void PartSelectionScreen_AddCategoryCarbonChecked(DWORD* PSS, unsigned int TextureHash, unsigned int LanguageHash)
+{
+    static const int CarbonSlots[] =
+    {
+        CAR_SLOT_ID::HOOD, CAR_SLOT_ID::SPOILER, CAR_SLOT_ID::ROOF,
+        CAR_SLOT_ID::LEFT_SIDE_MIRROR, CAR_SLOT_ID::RIGHT_SIDE_MIRROR,
+        CAR_SLOT_ID::DOOR_LEFT, CAR_SLOT_ID::DOOR_RIGHT,
+    };
+
+    for (int i = 0; i < (int)(sizeof(CarbonSlots) / sizeof(CarbonSlots[0])); i++)
+    {
+        if (!PartLink_IsSlotHidden(CarbonSlots[i]))
+        {
+            PartSelectionScreen_AddCategoryCarbon(PSS, TextureHash, LanguageHash);
+            return;
+        }
+    }
+}
+
 void PartSelectionScreen_AddCategoryChecked(DWORD* PSS, unsigned int CarSlotID, unsigned int TextureHash, unsigned int LanguageHash, bool unk)
 {
     if (PartLink_IsSlotHidden((int)CarSlotID)) return;
@@ -29,10 +51,10 @@ void PartSelectionScreen_AddCategoryChecked(DWORD* PSS, unsigned int CarSlotID, 
 
 void __fastcall PartSelectionScreen_SetupBodyShop(DWORD* PartSelectionScreen, void* EDX_Unused)
 {
-    // gTheRideInfo IS the RideInfo object, not a pointer to one
+    // gTheRideInfo is the object this function already reads parts from elsewhere, so it is the
+    // right one to resolve against, and the categories below need the state to be current.
     PartLink_Resolve((DWORD*)gTheRideInfo);
-
-    if (PartLinkCatalogue) PartLink_DumpPartCatalogueOnce(*(int*)gTheRideInfo);
+    PartLinkTraceCategories();
 
     // Read Part Options for the car
     DWORD FECarConfig = *(DWORD*)_FECarConfigRef;
@@ -182,7 +204,7 @@ void __fastcall PartSelectionScreen_SetupBodyShop(DWORD* PartSelectionScreen, vo
             0); // FRONT_BRAKE
     
     if (CarConfigs[CarTypeID].BodyShop.CarbonFiber)
-        PartSelectionScreen_AddCategoryCarbon(
+        PartSelectionScreen_AddCategoryCarbonChecked(
             PartSelectionScreen,
             CarConfigs[CarTypeID].Icons.BodyShopCarbonFiber,
             CarConfigs[CarTypeID].Names.BodyShopCarbonFiber);
@@ -197,26 +219,63 @@ void __fastcall PartSelectionScreen_SetupBodyShop(DWORD* PartSelectionScreen, vo
     
     int NumAttachments = CarConfigs[CarTypeID].BodyShop.Attachments;
 
-    int AttachmentAvailable[5] = {
+    // 0-4 are the DAMAGE_* slots, which UG2 never renders, so nlgxzef could give them any meaning.
+    // 5-10 are the interior and underside slots. Those the game does render, but only while the
+    // thing they hang off is open, so using them as ordinary attachment slots also means turning
+    // their culling off, which RideInfo_UpdatePartsEnabled does for exactly the enabled ones.
+    // They are not contiguous, hence the table instead of __ATTACHMENT_MODEL_FIRST + i.
+    static const int AttachmentSlots[11] = {
+        CAR_SLOT_ID::DAMAGE_FRONT,
+        CAR_SLOT_ID::DAMAGE_REAR,
+        CAR_SLOT_ID::DAMAGE_LEFT,
+        CAR_SLOT_ID::DAMAGE_RIGHT,
+        CAR_SLOT_ID::DAMAGE_TOP,
+        CAR_SLOT_ID::DOOR_PANEL_LEFT,
+        CAR_SLOT_ID::DOOR_PANEL_RIGHT,
+        CAR_SLOT_ID::DOOR_SILL_LEFT,
+        CAR_SLOT_ID::DOOR_SILL_RIGHT,
+        CAR_SLOT_ID::HOOD_UNDER,
+        CAR_SLOT_ID::TRUNK_UNDER,
+    };
+
+    int AttachmentAvailable[11] = {
         CarConfigs[CarTypeID].BodyShop.Attachment0,
         CarConfigs[CarTypeID].BodyShop.Attachment1,
         CarConfigs[CarTypeID].BodyShop.Attachment2,
         CarConfigs[CarTypeID].BodyShop.Attachment3,
-        CarConfigs[CarTypeID].BodyShop.Attachment4
-	};
-    DWORD AttachmentIcons[5] = {
+        CarConfigs[CarTypeID].BodyShop.Attachment4,
+        CarConfigs[CarTypeID].BodyShop.Attachment5,
+        CarConfigs[CarTypeID].BodyShop.Attachment6,
+        CarConfigs[CarTypeID].BodyShop.Attachment7,
+        CarConfigs[CarTypeID].BodyShop.Attachment8,
+        CarConfigs[CarTypeID].BodyShop.Attachment9,
+        CarConfigs[CarTypeID].BodyShop.Attachment10
+    };
+    DWORD AttachmentIcons[11] = {
         CarConfigs[CarTypeID].Icons.BodyShopAttachment0,
         CarConfigs[CarTypeID].Icons.BodyShopAttachment1,
         CarConfigs[CarTypeID].Icons.BodyShopAttachment2,
         CarConfigs[CarTypeID].Icons.BodyShopAttachment3,
-        CarConfigs[CarTypeID].Icons.BodyShopAttachment4
+        CarConfigs[CarTypeID].Icons.BodyShopAttachment4,
+        CarConfigs[CarTypeID].Icons.BodyShopAttachment5,
+        CarConfigs[CarTypeID].Icons.BodyShopAttachment6,
+        CarConfigs[CarTypeID].Icons.BodyShopAttachment7,
+        CarConfigs[CarTypeID].Icons.BodyShopAttachment8,
+        CarConfigs[CarTypeID].Icons.BodyShopAttachment9,
+        CarConfigs[CarTypeID].Icons.BodyShopAttachment10
     };
-    DWORD AttachmentNames[5] = {
+    DWORD AttachmentNames[11] = {
         CarConfigs[CarTypeID].Names.BodyShopAttachment0,
         CarConfigs[CarTypeID].Names.BodyShopAttachment1,
         CarConfigs[CarTypeID].Names.BodyShopAttachment2,
         CarConfigs[CarTypeID].Names.BodyShopAttachment3,
-        CarConfigs[CarTypeID].Names.BodyShopAttachment4
+        CarConfigs[CarTypeID].Names.BodyShopAttachment4,
+        CarConfigs[CarTypeID].Names.BodyShopAttachment5,
+        CarConfigs[CarTypeID].Names.BodyShopAttachment6,
+        CarConfigs[CarTypeID].Names.BodyShopAttachment7,
+        CarConfigs[CarTypeID].Names.BodyShopAttachment8,
+        CarConfigs[CarTypeID].Names.BodyShopAttachment9,
+        CarConfigs[CarTypeID].Names.BodyShopAttachment10
     };
 
     for (int i = 0; i < NumAttachments; i++)
@@ -224,7 +283,7 @@ void __fastcall PartSelectionScreen_SetupBodyShop(DWORD* PartSelectionScreen, vo
         if (AttachmentAvailable[i])
             PartSelectionScreen_AddCategoryChecked(
             PartSelectionScreen,
-            CAR_SLOT_ID::__ATTACHMENT_MODEL_FIRST + i,
+            AttachmentSlots[i],
             AttachmentIcons[i],
             AttachmentNames[i],
             0);
@@ -379,6 +438,12 @@ int GetPartsList(int CarSlotID, DWORD* PartsBList, unsigned int PartAttribFilter
     case CAR_SLOT_ID::DAMAGE_LEFT:
     case CAR_SLOT_ID::DAMAGE_RIGHT:
     case CAR_SLOT_ID::DAMAGE_TOP:
+    case CAR_SLOT_ID::DOOR_PANEL_LEFT:
+    case CAR_SLOT_ID::DOOR_PANEL_RIGHT:
+    case CAR_SLOT_ID::DOOR_SILL_LEFT:
+    case CAR_SLOT_ID::DOOR_SILL_RIGHT:
+    case CAR_SLOT_ID::HOOD_UNDER:
+    case CAR_SLOT_ID::TRUNK_UNDER:
         while (TheCarPart)
         {
             unsigned int IsCF = CarPart_GetAppliedAttributeUParam(TheCarPart, CT_bStringHash("CARBONFIBRE"), 0) != 0 ? 666 : 0;
@@ -386,7 +451,8 @@ int GetPartsList(int CarSlotID, DWORD* PartsBList, unsigned int PartAttribFilter
             {
                 if (UnlockSystem_IsCarPartUnlocked(CarCustomizeManager_GetPartUnlockFilter(), CarSlotID, TheCarPart, SomethingUnk)
                     && (CarSlotID != 9 || (*((BYTE*)TheCarPart + 5) & 0x1F) != 5)
-                    && !PartLink_IsHiddenFromMenu(TheCarPart))
+                    && !PartLink_IsHiddenFromMenu(TheCarPart)
+                    && !PartLink_IsSlotHidden(CarSlotID))
                 {
                     NewBNode = (DWORD*)j__malloc(0x10u);
                     if (NewBNode)
@@ -884,33 +950,34 @@ void __fastcall PartSelectionScreen_SetupCarbonParts(DWORD* PartSelectionScreen,
 
     PartSelectionScreen_ResetCategories(&PartSelectionScreen[19]);
     PartSelectionScreen[113] = 0;
-    PartSelectionScreen_AddCategory(
+    PartSelectionScreen_AddCategoryChecked(
         PartSelectionScreen, 
         CAR_SLOT_ID::HOOD, 
         CarConfigs[CarTypeID].Icons.BodyShopCarbonFiberHood,
         CarConfigs[CarTypeID].Names.BodyShopCarbonFiberHood,
         1);// VISUAL_PART_CARBON_FIBRE_HOODS
 
-    PartSelectionScreen_AddCategory(
+    PartSelectionScreen_AddCategoryChecked(
         PartSelectionScreen, 
         CAR_SLOT_ID::SPOILER,
         CarConfigs[CarTypeID].Icons.BodyShopCarbonFiberSpoiler,
         CarConfigs[CarTypeID].Names.BodyShopCarbonFiberSpoiler,
         1);// VISUAL_PART_CARBON_FIBRE_SPOILERS
 
-    PartSelectionScreen_AddCategory(
+    PartSelectionScreen_AddCategoryChecked(
         PartSelectionScreen, 
         CAR_SLOT_ID::ROOF,
         CarConfigs[CarTypeID].Icons.BodyShopCarbonFiberRoofScoop,
         CarConfigs[CarTypeID].Names.BodyShopCarbonFiberRoofScoop,
         1);// VISUAL_PART_CARBON_FIBRE_ROOF_SCOOP
 
-    PartSelectionScreen_AddCategory(
+    PartSelectionScreen_AddCategoryChecked(
         PartSelectionScreen, 
         CAR_SLOT_ID::WING_MIRROR,
         CarConfigs[CarTypeID].Icons.BodyShopCarbonFiberMirrors,
         CarConfigs[CarTypeID].Names.BodyShopCarbonFiberMirrors,
         1);// VISUAL_PART_CARBON_FIBRE_MIRRORS
+
 
     /*
     CFDoor:

@@ -1,10 +1,18 @@
 #pragma once
 
+// CarLotUnlockData is 256 bytes and the index arrives in ecx straight from the game, with nothing
+// checking it. A crash in this function at 0x513CCC came in with esi = 0xE5F5E5FB, so the index
+// does go wild in the field. Out of range now skips instead of writing over whatever follows.
 void __declspec(naked) CarLotFixCodeCaveWrite()
 {
 	_asm
 	{
+		cmp ecx, 256
+		jae Skip
+
 		mov byte ptr ds : [CarLotUnlockData + ecx] , 0
+
+		Skip :
 		push 0x513CDA
 		retn
 	}
@@ -14,10 +22,58 @@ void __declspec(naked) CarLotFixCodeCaveRead()
 {
 	_asm
 	{
+		cmp esi, 256
+		jae OutOfRange
+
 		mov al, [CarLotUnlockData + esi]
+		jmp Done
+
+		OutOfRange :
+		xor al, al          // a bogus index reads as locked rather than as garbage
+
+		Done :
 		test al, al
 		push 0x513CF6
 		retn
+	}
+}
+
+// Called from DoUnlimiterStuffCodeCave2, which is naked and so cannot hold locals.
+void FixNetQuantizers()
+{
+	// Network quantizers.
+	//
+	// A quantizer is four fields, written by sub_5820C0 when it is registered:
+	//
+	//   +0x12C  bit count, the smallest n where (1 << n) >= max - min + 1
+	//   +0x130  min
+	//   +0x134  max
+	//   +0x138  max + 1
+	//
+	// Upstream raised max and max+1 and left the bit count alone. Vanilla registers
+	// QuantPartIndex with max 0x3E80, which needs 14 bits, so with more parts than that the
+	// packer still wrote 14 bits and every index above 16383 came out of the wire wrapped. That
+	// is why colours and vinyls synced in multiplayer and body parts did not: those use
+	// QuantInt2Bit and QuantInt4Bit, which nobody moved.
+	int PartBits = 1;
+	while ((1 << PartBits) < CarPartCount + 1) PartBits++;
+	injector::WriteMemory<int>(0x89D418, PartBits, true);         // QuantPartIndex bit count
+	injector::WriteMemory<int>(0x89D420, CarPartCount, true);     // max
+	injector::WriteMemory<int>(0x89D424, CarPartCount + 1, true); // max + 1
+	// The registration itself, sub_5EFAC0, pushes the vanilla 0x3E80 as an imm32. If it runs
+	// after this it would put all four fields back, so the immediate goes too.
+	injector::WriteMemory<int>(0x5EFC43, CarPartCount, true);
+	injector::WriteMemory<int>(0x5F04A4, CarPartCount, true); // sub_5F0320
+	injector::WriteMemory<int>(0x5F0675, CarPartCount + 1, true); // sub_5F04D0
+	// Same treatment for the car type quantizer, registered with max 0x2E. CarCountByte comes
+	// from the other code cave, so skip if that has not run yet rather than write a bit count of
+	// one. Note the registration there is push imm8, so its own ceiling is 127, not 255.
+	if (CarCountByte > 0)
+	{
+		int TypeBits = 1;
+		while ((1 << TypeBits) < CarCountByte + 1) TypeBits++;
+
+		injector::WriteMemory<int>(0x89D2D4, TypeBits, true); // QuantCarType bit count
 	}
 }
 
@@ -187,15 +243,20 @@ void __declspec(naked) DoUnlimiterStuffCodeCave()
 	injector::WriteMemory<int>(0x6099B1, CarArraySize, true); // sub_6097D0
 	injector::WriteMemory<int>(0x636C24, CarArraySize, true); // LoaderCarInfo
 
-	injector::WriteMemory<BYTE>(0x5596CB, CarCount, true); // IceSelectionScreen::Setup
-	injector::WriteMemory<BYTE>(0x5EFC5A, CarCount, true); // sub_5EFAC0
-	injector::WriteMemory<BYTE>(0x89D2DC, CarCount, true); // QuantCarType (gets set before unlimiter so we need to overwrite it here)
-	injector::WriteMemory<BYTE>(0x89D2E0, CarCount + 1, true); // QuantCarType
-	injector::WriteMemory<BYTE>(0x610150, CarCount, true); // GetCarTypeInfoFromHash
-	injector::WriteMemory<BYTE>(0x61C671, CarCount, true); // CarLoader::LoadAllPartsAnims
-	injector::WriteMemory<BYTE>(0x6372B4, CarCount, true); // RideInfo::FillWithPreset
+	// These are byte wide fields in the game's own instructions, so more than 255 car types cannot
+	// be expressed here. Clamping is not a fix for that, but it degrades to "the first 255" instead
+	// of truncating, where 256 would write 0 and make a loop bound disappear entirely.
+	CarCountByte = (CarCount > 255) ? 255 : (BYTE)CarCount; // global: a naked function cannot hold an initialised local
+
+	injector::WriteMemory<BYTE>(0x5596CB, CarCountByte, true); // IceSelectionScreen::Setup
+	injector::WriteMemory<BYTE>(0x5EFC5A, CarCountByte, true); // sub_5EFAC0
+	injector::WriteMemory<BYTE>(0x89D2DC, CarCountByte, true); // QuantCarType (gets set before unlimiter so we need to overwrite it here)
+	injector::WriteMemory<BYTE>(0x89D2E0, (BYTE)(CarCountByte + 1), true); // QuantCarType
+	injector::WriteMemory<BYTE>(0x610150, CarCountByte, true); // GetCarTypeInfoFromHash
+	injector::WriteMemory<BYTE>(0x61C671, CarCountByte, true); // CarLoader::LoadAllPartsAnims
+	injector::WriteMemory<BYTE>(0x6372B4, CarCountByte, true); // RideInfo::FillWithPreset
 	//injector::WriteMemory<BYTE>(0x4EAE48, CarCount, true); // GarageMainScreen::GarageMainScreen
-	injector::WriteMemory<BYTE>(0x513D1D, CarCount, true); // PlayerCareerState::BuildUnlockedCareerCarList -> UICareerCarLot::BuildCarList
+	injector::WriteMemory<BYTE>(0x513D1D, CarCountByte, true); // PlayerCareerState::BuildUnlockedCareerCarList -> UICareerCarLot::BuildCarList
 
 	// Make them available as opponents
 	LoadCarConfigs();
@@ -208,6 +269,7 @@ void __declspec(naked) DoUnlimiterStuffCodeCave()
 	LoadVinylGroups();
 	LoadStarGazer();
 	LoadPartLinks();
+	LoadPresetCarOverrides();
 	LoadCameraInfo();
 
 	// Fix misc stats
@@ -239,15 +301,7 @@ void __declspec(naked) DoUnlimiterStuffCodeCave2()
 
 	CarPartCount = CarPartPartsTableSize / SingleCarPartSize;
 
-	if (CarPartCount > 16000)
-	{
-		// Fix quantizers
-		injector::WriteMemory<int>(0x89D420, CarPartCount, true); // QuantPartIndex
-		injector::WriteMemory<int>(0x89D424, CarPartCount + 1, true);
-
-		injector::WriteMemory<int>(0x5F04A4, CarPartCount, true); // sub_5F0320
-		injector::WriteMemory<int>(0x5F0675, CarPartCount + 1, true); // sub_5F04D0
-	}
+	FixNetQuantizers();
 
 	// Continue
 	_asm popad;

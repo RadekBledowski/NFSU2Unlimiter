@@ -357,7 +357,8 @@ StaticCameraInfo* GetStaticCameraInfo(int CarTypeID)
 			return &TheCameraInfoStuff.StaticCameraInfos[i].Info;
 	}
 
-	// If not, check if we have sedans or SUVs static camera info
+	if (!StaticCameraGenericFallback) return 0;
+
 	sprintf(CameraInfoName, "%s", IsSUV(CarTypeID) ? "_SUVs" : "_Sedans");
 
 	for (int i = 0; i < TheCameraInfoStuff.StaticCameraInfos.size(); i++)

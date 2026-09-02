@@ -14,6 +14,7 @@
 // jumping back into vanilla code that would then walk a resized array.
 
 #include <vector>
+#include <algorithm>
 
 // ---------------------------------------------------------------------------------------------
 // Preset cars
@@ -42,12 +43,33 @@
 // both at once will list the same cars twice.
 // ---------------------------------------------------------------------------------------------
 
-// Made-up bit that does not collide with INVENTORY_CAR_FLAGS (1 stock, 2 tuned, 4 career, 8 sponsor)
+// Made-up bits that do not collide with INVENTORY_CAR_FLAGS (1 stock, 2 tuned, 4 career,
+// 8 sponsor, 0x10 online). One per preset group, so the presets can be split into as many
+// categories as there are bits: sponsor cars, boss cars, debug cars, whatever _PresetCars.ini
+// says. Group 0 keeps the old value so nothing that referenced it changes meaning.
+#define PARTLINK_MAX_PRESET_GROUPS 4
 #define CUSTOM_IS_PRESET_CAR 0x20
+#define PRESET_GROUP_BIT(g) (CUSTOM_IS_PRESET_CAR << (g))
+#define PRESET_GROUP_MASK   (CUSTOM_IS_PRESET_CAR * ((1 << PARTLINK_MAX_PRESET_GROUPS) - 1))
 
-#define MENU_STATE_MAIN_MENU      0x02
-#define MENU_STATE_2P_SPLITSCREEN 0x04
-#define MENU_STATE_CAR_CUSTOMIZE  0x20
+char PresetGroupNames[PARTLINK_MAX_PRESET_GROUPS][64] =
+{
+	"Sponsor cars", "Boss cars", "Debug cars", "Other cars"
+};
+
+#define MENU_STATE_MAIN_MENU                       0x02
+#define MENU_STATE_2P_SPLITSCREEN                  0x04
+#define MENU_STATE_ONLINE_MAIN_MENU                0x08
+#define MENU_STATE_CAR_CUSTOMIZE                   0x20
+#define MENU_STATE_CUSTOMIZE_FROM_ONLINE_MAIN_MENU 0x100
+#define MENU_STATE_LAN_MAIN_MENU                   0x200
+
+// Customizing, from the garage or from an online lobby
+#define MENU_STATES_CUSTOMIZE (MENU_STATE_CAR_CUSTOMIZE | MENU_STATE_CUSTOMIZE_FROM_ONLINE_MAIN_MENU)
+
+// Car select outside the career: quick race, splitscreen, online and LAN
+#define MENU_STATES_CARSELECT (MENU_STATE_MAIN_MENU | MENU_STATE_2P_SPLITSCREEN \
+	| MENU_STATE_ONLINE_MAIN_MENU | MENU_STATE_LAN_MAIN_MENU)
 
 #define MSG_CARSELECT_PREV 0x5073EF13
 #define MSG_CARSELECT_NEXT 0xD9FEEC59
@@ -116,6 +138,59 @@ void (__thiscall* TunedCar18_CopyTuningFromMenuCarInstance)(DWORD* TunedCar18, D
 // No fixed cap. The entries live in a vector that is sized once from the game's own CarPreset
 // list, and the naked stubs index it through PresetCarsBase rather than a static array symbol.
 // Only cap: slotHash is the 1-based index, and the browser skips a slotHash of 0.
+// Per-preset overrides from UnlimiterData\_PresetCars.ini, keyed by the preset's own name.
+struct PresetCarOverride
+{
+	DWORD NameHash;
+	bool Enabled;
+	int Group;
+	int UnlockCondition;   // PRESET_UNLOCK_*
+	char UnlockValue[32];  // the code as typed, for PRESET_UNLOCK_CODE
+	char DisplayName[32];
+};
+
+#define PRESET_UNLOCK_NONE 0
+#define PRESET_UNLOCK_CODE 1
+
+// The game's cheat table: a pointer and a count it is happy for us to read.
+#define _CheatScreenData 0x865930
+#define CheatScreenData_Cheats    *(BYTE**)(_CheatScreenData + 0x0C)
+#define CheatScreenData_NumCheats *(int*)(_CheatScreenData + 0x10)
+#define SIZEOF_CHEATDATA 0x34
+
+// A CheatData is name[32] at +0, hasBeenTriggered at +0x30. Comparing the typed name means a
+// code works whether it is one of the game's own or one we add to the table later.
+bool PresetIsCodeEntered(const char* Code)
+{
+	if (!Code || !Code[0]) return false;
+
+	BYTE* Cheats = CheatScreenData_Cheats;
+	int Count = CheatScreenData_NumCheats;
+
+	if (!Cheats || Count <= 0 || Count > 256) return false;
+
+	for (int i = 0; i < Count; i++)
+	{
+		BYTE* c = Cheats + i * SIZEOF_CHEATDATA;
+
+		if (!c[0x30]) continue;                    // not triggered
+		if (_stricmp((char*)c, Code) == 0) return true;
+	}
+
+	return false;
+}
+
+std::vector<PresetCarOverride> PresetCarOverrides;
+bool PresetCarsOnlyListed = false;
+
+PresetCarOverride* FindPresetCarOverride(DWORD NameHash)
+{
+	for (size_t i = 0; i < PresetCarOverrides.size(); i++)
+		if (PresetCarOverrides[i].NameHash == NameHash) return &PresetCarOverrides[i];
+
+	return nullptr;
+}
+
 std::vector<SponsorCar> PresetCarsAsInventoryCars;
 SponsorCar* PresetCarsBase = nullptr;
 int NumPresetCars = 0;
@@ -129,12 +204,47 @@ void BuildPresetCarList()
 	ObjectLink* Sentinel = (ObjectLink*)_carPresets;
 	if (!Sentinel->next) return; // list not loaded yet
 
-	std::vector<DWORD> Entries;
+	struct Pending { DWORD Hash; int Group; };
+	std::vector<Pending> Entries;
 
-	for (ObjectLink* i = Sentinel->next; i && i != Sentinel; i = i->next)
-		Entries.push_back(FEHashUpper(((CarPreset*)i)->Name));
+	// Order is the order of UnlimiterData\_PresetCars.ini. Listed presets first, in the order
+	// they appear in the file, then anything the file does not mention. Moving a line moves the
+	// car, which beats guessing at sort numbers.
+	for (size_t o = 0; o < PresetCarOverrides.size(); o++)
+	{
+		PresetCarOverride& ov = PresetCarOverrides[o];
+
+		if (!ov.Enabled) continue;
+		if (ov.UnlockCondition == PRESET_UNLOCK_CODE && !PresetIsCodeEntered(ov.UnlockValue)) continue;
+
+		for (ObjectLink* i = Sentinel->next; i && i != Sentinel; i = i->next)
+		{
+			if (FEHashUpper(((CarPreset*)i)->Name) != ov.NameHash) continue;
+
+			Pending e;
+			e.Hash = ov.NameHash;
+			e.Group = (ov.Group >= 0 && ov.Group < PARTLINK_MAX_PRESET_GROUPS) ? ov.Group : 0;
+			Entries.push_back(e);
+			break;
+		}
+	}
+
+	if (!PresetCarsOnlyListed)
+	{
+		for (ObjectLink* i = Sentinel->next; i && i != Sentinel; i = i->next)
+		{
+			DWORD Hash = FEHashUpper(((CarPreset*)i)->Name);
+			if (FindPresetCarOverride(Hash)) continue; // already placed above, or deliberately out
+
+			Pending e;
+			e.Hash = Hash;
+			e.Group = 0;
+			Entries.push_back(e);
+		}
+	}
 
 	if (Entries.empty()) return;
+
 
 	PresetCarsAsInventoryCars.clear();
 	PresetCarsAsInventoryCars.reserve(Entries.size());
@@ -149,8 +259,8 @@ void BuildPresetCarList()
 		s.Parent.slotHash = (DWORD)n + 1;
 		s.Parent.field_C = .0f;
 		s.Parent.field_10 = 0;
-		s.Parent.flags = CUSTOM_IS_PRESET_CAR;
-		s.CarPresetHash = Entries[n];
+		s.Parent.flags = PRESET_GROUP_BIT(Entries[n].Group);
+		s.CarPresetHash = Entries[n].Hash;
 
 		PresetCarsAsInventoryCars.push_back(s);
 	}
@@ -175,97 +285,55 @@ void SetCarSelectCategory(DWORD NewCategory)
 }
 
 // Returns 1 if the category rotation was handled here, 0 to fall through to the game's own code.
+int PresetGroupCount(DWORD Flags); // defined further down
+
+// The rotation used to be two mirrored switch statements with a fall-through chain, which cannot
+// grow past one preset category. It is now an ordered list built per call from whatever actually
+// has cars in it, so adding a group needs no code.
+int PresetBuildCategoryOrder(DWORD* CarSelectFNGObject, bool InQuickRace, DWORD* Out)
+{
+	int n = 0;
+
+	Out[n++] = 1 | 2; // stock and tuned together, the screen always opens on this
+	Out[n++] = 1;     // IS_STOCK_CAR
+
+	if (CarSelectFNGObject_CountAvailableCars(CarSelectFNGObject, 2)) Out[n++] = 2; // tuned
+	if (InQuickRace && CarSelectFNGObject_CountAvailableCars(CarSelectFNGObject, 4)) Out[n++] = 4; // career
+
+	// The game's own SPONSOR CARS category is left out on purpose: the sponsor cars are part of
+	// the preset list, so keeping it would show every one of them twice.
+	for (int g = 0; g < PARTLINK_MAX_PRESET_GROUPS; g++)
+		if (PresetGroupCount(PRESET_GROUP_BIT(g))) Out[n++] = PRESET_GROUP_BIT(g);
+
+	return n;
+}
+
+// Returns 1 if the rotation was handled here, 0 to fall through to the game's own code.
 int __fastcall CarSelectFNGObject_ChangeCategory(DWORD* CarSelectFNGObject, void* EDX_Unused, DWORD Message)
 {
-	DWORD NewCategory = carSelectCategory;
 	DWORD MenuState = profileMenuState;
 
-	bool InCustomize = (MenuState == MENU_STATE_CAR_CUSTOMIZE) && PresetCarsInCustomize;
-	bool InQuickRace = (MenuState == MENU_STATE_MAIN_MENU || MenuState == MENU_STATE_2P_SPLITSCREEN)
-		&& PresetCarsInQuickRace;
+	bool InCustomize = (MenuState & MENU_STATES_CUSTOMIZE) && PresetCarsInCustomize;
+	bool InQuickRace = (MenuState & MENU_STATES_CARSELECT) && PresetCarsInQuickRace;
 
 	if (!InCustomize && !InQuickRace) return 0;
 
-	if (Message == MSG_CARSELECT_PREV)
-	{
-		// stock|tuned -> preset -> (sponsor ->) (career ->) (tuned ->) stock -> loop
-		switch (NewCategory)
-		{
-		case 1 | 2: // IS_STOCK_CAR | IS_TUNED_CAR
-			NewCategory = CUSTOM_IS_PRESET_CAR;
-			break;
+	DWORD Order[8 + PARTLINK_MAX_PRESET_GROUPS];
+	int Count = PresetBuildCategoryOrder(CarSelectFNGObject, InQuickRace, Order);
 
-		case CUSTOM_IS_PRESET_CAR:
-			if (InQuickRace && CarSelectFNGObject_CountAvailableCars(CarSelectFNGObject, 8)) // IS_SPONSOR_CAR
-			{
-				NewCategory = 8;
-				break;
-			}
-			// fall through
-		case 8: // IS_SPONSOR_CAR
-			if (InQuickRace && CarSelectFNGObject_CountAvailableCars(CarSelectFNGObject, 4)) // IS_CAREER_CAR
-			{
-				NewCategory = 4;
-				break;
-			}
-			// fall through
-		case 4: // IS_CAREER_CAR
-			if (CarSelectFNGObject_CountAvailableCars(CarSelectFNGObject, 2)) // IS_TUNED_CAR
-			{
-				NewCategory = 2;
-				break;
-			}
-			// fall through
-		case 2: // IS_TUNED_CAR
-			NewCategory = 1;
-			break;
+	if (Count < 2) return 0;
 
-		case 1: // IS_STOCK_CAR
-			NewCategory = 1 | 2;
-			break;
-		}
-	}
-	else if (Message == MSG_CARSELECT_NEXT)
-	{
-		// stock|tuned -> stock -> (tuned ->) (career ->) (sponsor ->) preset -> loop
-		switch (NewCategory)
-		{
-		case 1 | 2:
-			NewCategory = 1;
-			break;
+	DWORD Current = carSelectCategory;
+	int At = 0;
 
-		case 1:
-			if (CarSelectFNGObject_CountAvailableCars(CarSelectFNGObject, 2))
-			{
-				NewCategory = 2;
-				break;
-			}
-			// fall through
-		case 2:
-			if (InQuickRace && CarSelectFNGObject_CountAvailableCars(CarSelectFNGObject, 4))
-			{
-				NewCategory = 4;
-				break;
-			}
-			// fall through
-		case 4:
-			if (InQuickRace && CarSelectFNGObject_CountAvailableCars(CarSelectFNGObject, 8))
-			{
-				NewCategory = 8;
-				break;
-			}
-			// fall through
-		case 8:
-			NewCategory = CUSTOM_IS_PRESET_CAR;
-			break;
+	for (int i = 0; i < Count; i++)
+		if (Order[i] == Current) { At = i; break; }
 
-		case CUSTOM_IS_PRESET_CAR:
-			NewCategory = 1 | 2;
-			break;
-		}
-	}
+	if (Message == MSG_CARSELECT_NEXT) At = (At + 1) % Count;
+	else if (Message == MSG_CARSELECT_PREV) At = (At + Count - 1) % Count;
+	else return 0;
 
-	SetCarSelectCategory(NewCategory);
+	SetCarSelectCategory(Order[At]);
 	CarSelectFNGObject_ResetBrowableCars(CarSelectFNGObject);
 	CarSelectFNGObject_UpdateUI(CarSelectFNGObject);
 
@@ -298,31 +366,43 @@ void __declspec(naked) CarSelectFNGObject_ChangeCategoryCodeCave()
 }
 
 // 0x534850 CarCollectionWithPointers::CountAvailableCars
-int __stdcall CountAvailablePresetCars()
+int PresetGroupCount(DWORD Flags)
+{
+	BuildPresetCarList();
+
+	int n = 0;
+
+	for (int i = 0; i < NumPresetCars; i++)
+		if (PresetCarsBase[i].Parent.flags & Flags) n++;
+
+	return n;
+}
+
+// 0x534850 CarCollectionWithPointers::CountAvailableCars
+int __stdcall CountAvailablePresetCars(DWORD Flags)
 {
 	// Outside the customize menu the category must not stick around unless quick race support is
-	// on, otherwise the player can carry it into a menu that cannot handle it. Returning 0 makes
-	// the browser fall back to "all cars".
+	// on, otherwise the player can carry it into a menu that cannot handle it.
 	DWORD MenuState = profileMenuState;
 
-	if (MenuState == MENU_STATE_CAR_CUSTOMIZE)
+	if (MenuState & MENU_STATES_CUSTOMIZE)
 	{
 		if (!PresetCarsInCustomize) return 0;
 	}
-	else if (MenuState == MENU_STATE_MAIN_MENU || MenuState == MENU_STATE_2P_SPLITSCREEN)
+	else if (MenuState & MENU_STATES_CARSELECT)
 	{
 		if (!PresetCarsInQuickRace) return 0;
 	}
 	else return 0;
 
-	return CountCarPresets();
+	return PresetGroupCount(Flags);
 }
 
 void __declspec(naked) CarCollection_CountAvailableCarsCodeCave()
 {
 	_asm
 	{
-		test dword ptr[esp + 4], CUSTOM_IS_PRESET_CAR
+		test dword ptr[esp + 4], PRESET_GROUP_MASK
 		jnz ItsPreset
 
 		// Original prologue, then jump back
@@ -333,7 +413,8 @@ void __declspec(naked) CarCollection_CountAvailableCarsCodeCave()
 		jmp eax
 
 		ItsPreset :
-		call CountAvailablePresetCars
+		push dword ptr[esp + 4]        // the group flags
+		call CountAvailablePresetCars  // __stdcall, cleans its own argument
 		retn 8
 	}
 }
@@ -344,13 +425,23 @@ InventoryCar* __stdcall FindPresetCarAfterGivenCar(DWORD FlagsToCheck, Inventory
 	BuildPresetCarList();
 
 	if (!NumPresetCars) return nullptr;
-	if (!GivenCar) return &PresetCarsBase[0].Parent;
 
-	for (int i = 0; i < NumPresetCars - 1; i++)
+	// Walk only the group being browsed. The entries of every group live in one array, so this is
+	// the filter that keeps the categories apart.
+	int Start = 0;
+
+	if (GivenCar)
 	{
-		if ((InventoryCar*)&PresetCarsBase[i] == GivenCar)
-			return &PresetCarsBase[i + 1].Parent;
+		Start = -1;
+
+		for (int i = 0; i < NumPresetCars; i++)
+			if ((InventoryCar*)&PresetCarsBase[i] == GivenCar) { Start = i + 1; break; }
+
+		if (Start < 0) return nullptr;
 	}
+
+	for (int i = Start; i < NumPresetCars; i++)
+		if (PresetCarsBase[i].Parent.flags & FlagsToCheck) return &PresetCarsBase[i].Parent;
 
 	return nullptr;
 }
@@ -359,7 +450,7 @@ void __declspec(naked) CarCollection_FindCarWithFlagAfterGivenCarCodeCave()
 {
 	_asm
 	{
-		test dword ptr[esp + 4], CUSTOM_IS_PRESET_CAR
+		test dword ptr[esp + 4], PRESET_GROUP_MASK
 		jnz ItsPreset
 
 		cmp byte ptr[ExtendFeCarLimits], 0
@@ -421,20 +512,133 @@ void __declspec(naked) CarCollection_GetCarForSlotCodeCave()
 	}
 }
 
+// The car lookup family, 0x503510 / 0x503550 / 0x5035C0 / 0x503680
+//
+// CustomizeCar asks several of these in turn for a car matching the slot hash before it reaches
+// the patch below. Our entries carry a 1 based index as their slot hash, which matches nothing,
+// and the vanilla lookups do not return null for it: they walk into the second player's
+// collection from a null base. That is the 0xA118 fault in GetTunedCarByHandle and the one in
+// GetCurrentCareerCar right after it, each showing the preset number in ebx.
+//
+// Null is the answer CustomizeCar already knows how to handle: the patch below sees esi == 0 and
+// builds the tuned car from the preset. So every one of them answers null for our range and hands
+// everything else to the original, which stays in place because the call sites are redirected
+// rather than the function overwritten. That also composes with ExtendFeCarLimits, whose own
+// replacements are JMPs at the start of the same functions.
+
+bool PresetOwnsSlotHash(DWORD SlotHash)
+{
+	BuildPresetCarList();
+
+	// Unsigned. A real slot hash like 2509970966 does not fit in a signed int, so casting it made
+	// it negative and every genuine car looked like preset number "less than zero", which is why
+	// ordinary cars started faulting: this answered null for all of them.
+	return SlotHash != 0 && SlotHash <= (DWORD)NumPresetCars;
+}
+
+typedef void* (__thiscall* CarLookupFn)(DWORD*, DWORD);
+
+CarLookupFn GameGetStockCarByHash    = (CarLookupFn)0x503550;
+CarLookupFn GameGetTunedCarByHandle  = (CarLookupFn)0x5035C0;
+CarLookupFn GameGetCurrentCareerCar  = (CarLookupFn)0x503680;
+
+// 0x503640, the online car lookup. Not in FeCarLimits' list, which is why it took a disassembly
+// to find: GetTunedCarByHandle ends at 0x50362F and this starts after the alignment, so the
+// 0x503650 in every crash log was never inside the function I thought it was.
+//
+//   lea esi, [ecx+8138h]      base
+//   mov edx, [esi]            0x503650, the faulting read
+//   add esi, 438h ; cmp eax,6 six entries of 0x438, the onlineCars array
+//
+// Called from BeginCarCustomize at 0x552DAA, which is the 0x552DAF return address in every log.
+// It answers null for a miss anyway, so returning null for our range is its own normal path.
+CarLookupFn GameGetOnlineCarByHandle = (CarLookupFn)0x503640;
+
+void* __fastcall PresetGetStockCarByHash(DWORD* Db, void* EDX_Unused, DWORD SlotHash)
+{
+	bool Ours = PresetOwnsSlotHash(SlotHash);
+
+
+	return Ours ? nullptr : GameGetStockCarByHash(Db, SlotHash);
+}
+
+void* __fastcall PresetGetTunedCarByHandle(DWORD* Db, void* EDX_Unused, DWORD SlotHash)
+{
+	bool Ours = PresetOwnsSlotHash(SlotHash);
+
+
+	return Ours ? nullptr : GameGetTunedCarByHandle(Db, SlotHash);
+}
+
+void* __fastcall PresetGetOnlineCarByHandle(DWORD* Db, void* EDX_Unused, DWORD SlotHash)
+{
+	bool Ours = PresetOwnsSlotHash(SlotHash);
+
+
+	return Ours ? nullptr : GameGetOnlineCarByHandle(Db, SlotHash);
+}
+
+void* __fastcall PresetGetCurrentCareerCar(DWORD* Db, void* EDX_Unused, DWORD SlotHash)
+{
+	bool Ours = PresetOwnsSlotHash(SlotHash);
+
+
+	return Ours ? nullptr : GameGetCurrentCareerCar(Db, SlotHash);
+}
+
+// Redirects every 5 byte relative call landing exactly on Target, leaving the target intact.
+template<class T>
+int PresetRedirectCallsTo(DWORD Target, T Replacement)
+{
+	const DWORD ScanStart = 0x401000;
+	const DWORD ScanEnd = 0x7C0000;
+
+	int Patched = 0;
+
+	for (DWORD a = ScanStart; a < ScanEnd - 5; a++)
+	{
+		if (*(BYTE*)a != 0xE8) continue;
+		if ((DWORD)(a + 5 + *(int*)(a + 1)) != Target) continue;
+
+		injector::MakeCALL(a, Replacement, true);
+		Patched++;
+	}
+
+	return Patched;
+}
+
 // 0x552DBB inside CustomizeCar: no TunedCar instance was found for the slot hash, so build one
 // from the preset and copy its tuning in.
-DWORD* __stdcall CreateTunedCarFromPresetCar(DWORD* CarCollection, DWORD SlotNameHash)
+// The player 1 car collection. Every lookup in the game that works passes this; the ecx captured
+// at the 0x552DBB patch site is something else, and a crash log caught it as 0x001AFF64, a stack
+// address, which then made CreateNewTunedCarFromDataAtSlot walk the collection from there.
+#define _CarCollectionPlayer1 0x0083AD90
+
+DWORD* __stdcall CreateTunedCarFromPresetCar(DWORD* CarCollectionFromEcx, DWORD SlotNameHash)
 {
+	DWORD* CarCollection = (DWORD*)_CarCollectionPlayer1;
+
 	char Buf[64];
 
 	BuildPresetCarList();
 
-	if (SlotNameHash == 0 || (int)SlotNameHash > NumPresetCars || !PresetCarsBase) return nullptr;
+	if (SlotNameHash == 0 || SlotNameHash > (DWORD)NumPresetCars || !PresetCarsBase) return nullptr;
 
 	SponsorCar* PresetCar = &PresetCarsBase[SlotNameHash - 1];
 
 	CarPreset* Preset = FindCarPreset(PresetCar->CarPresetHash);
 	if (!Preset) return nullptr;
+
+	// A preset whose model name is empty or not text means the CarPreset we resolved is not one,
+	// and hashing it would hand CreateNewTunedCarFromDataAtSlot a hash matching no stock car.
+	if (!Preset->modelName[0]) return nullptr;
+
+	for (int c = 0; c < 31; c++)
+	{
+		char ch = Preset->modelName[c];
+		if (ch == 0) break;
+		if (ch < 0x20 || ch > 0x7E) return nullptr;
+	}
 
 	sprintf(Buf, "STOCK_%s", Preset->modelName);
 
@@ -520,13 +724,18 @@ void __declspec(naked) FindPresetCarWhenTuningForIngameCarCodeCave()
 
 void __stdcall CarSelectFNGObject_PostUpdateUI(DWORD* CarSelectFNGObject)
 {
-	if (carSelectCategory != CUSTOM_IS_PRESET_CAR)
+	if ((carSelectCategory & PRESET_GROUP_MASK) == 0)
 	{
 		FEngSetInvisible_Pkg("UI_QRCarSelect.fng", hashof_OL_CarMode_Group);
 		return;
 	}
 
-	FEPrintf("UI_QRCarSelect.fng", hashof_carselect_category_label, "%s", PresetCarsCategoryName);
+		int CategoryGroup = 0;
+
+	for (int g = 0; g < PARTLINK_MAX_PRESET_GROUPS; g++)
+		if (carSelectCategory == PRESET_GROUP_BIT(g)) { CategoryGroup = g; break; }
+
+	FEPrintf("UI_QRCarSelect.fng", hashof_carselect_category_label, "%s", PresetGroupNames[CategoryGroup]);
 
 	// Reuse the online ranked-car "race mode" label group to show the preset name
 	DWORD* Group = (DWORD*)FEngFindObject("UI_QRCarSelect.fng", hashof_OL_CarMode_Group);
@@ -543,7 +752,7 @@ void __stdcall CarSelectFNGObject_PostUpdateUI(DWORD* CarSelectFNGObject)
 	if (!SelectedEntry) return;
 
 	DWORD SlotHash = *(DWORD*)((BYTE*)SelectedEntry + OffsetOfEntrySlotHash);
-	if (SlotHash == 0 || (int)SlotHash > NumPresetCars || !PresetCarsBase) return;
+	if (SlotHash == 0 || SlotHash > (DWORD)NumPresetCars || !PresetCarsBase) return;
 
 	DWORD PresetHash = PresetCarsBase[SlotHash - 1].CarPresetHash;
 
@@ -598,6 +807,12 @@ void InitPresetCars()
 
 	if (PresetCarsInCustomize)
 	{
+		// Must come before the 0x552DBB patch below can ever run
+		PresetRedirectCallsTo(0x503550, PresetGetStockCarByHash);
+		PresetRedirectCallsTo(0x5035C0, PresetGetTunedCarByHandle);
+		PresetRedirectCallsTo(0x503680, PresetGetCurrentCareerCar);
+		PresetRedirectCallsTo(0x503640, PresetGetOnlineCarByHandle);
+
 		// Not a byte overlap with FeCarLimits, but 0x552D60 (IsCarStockHook) redirects the start
 		// of the same function, so this patch may simply never be reached with that feature on.
 		injector::MakeJMP(0x552DBB, CustomizeCar_SetCarInstanceIfMissingCodeCave, true);       // CustomizeCar

@@ -149,7 +149,6 @@ void __fastcall RideInfo_UpdatePartsEnabled(DWORD* RideInfo, void* EDX_Unused)
     CarType = *RideInfo;
 
     MirrorFrontBrakeToRear(RideInfo);
-    PartLink_Resolve(RideInfo);
 
     memset(RideInfo + 526, 1u, 0xA8u);
     *((WORD*)RideInfo + 1136) = 257;
@@ -515,6 +514,54 @@ void __fastcall RideInfo_UpdatePartsEnabled(DWORD* RideInfo, void* EDX_Unused)
         }
     }
 
+    // Parts that hang off something that opens are culled through this same visibility array, not
+    // by the renderer: SHOWENGINE above defeats the engine cull with exactly one write of 1 to
+    // byte 2104 + ENGINE. Same one write per slot here, so at 0 the vanilla behaviour is
+    // untouched and at 1 the part stays drawn with the hood, trunk or doors shut.
+    //
+    // Before the part link pass on purpose, so a HIDESLOT can still take one of these away.
+    {
+        MainSection& M = CarConfigs[CarType].Main;
+
+        if (M.AlwaysShowHoodUnder)  *((BYTE*)RideInfo + 2104 + CAR_SLOT_ID::HOOD_UNDER) = 1;
+        if (M.AlwaysShowTrunkUnder) *((BYTE*)RideInfo + 2104 + CAR_SLOT_ID::TRUNK_UNDER) = 1;
+
+        if (M.AlwaysShowDoorPanels)
+        {
+            *((BYTE*)RideInfo + 2104 + CAR_SLOT_ID::DOOR_PANEL_LEFT) = 1;
+            *((BYTE*)RideInfo + 2104 + CAR_SLOT_ID::DOOR_PANEL_RIGHT) = 1;
+        }
+
+        if (M.AlwaysShowDoorSills)
+        {
+            *((BYTE*)RideInfo + 2104 + CAR_SLOT_ID::DOOR_SILL_LEFT) = 1;
+            *((BYTE*)RideInfo + 2104 + CAR_SLOT_ID::DOOR_SILL_RIGHT) = 1;
+        }
+
+        // Attachment slots 5-10 are these same six. A slot offered as an attachment holds a part
+        // the player chose, so it has to stay drawn whatever the hood, trunk or doors are doing;
+        // enabling it as an attachment implies the always-show above.
+        static const int ExtraAttachmentSlots[6] = {
+            CAR_SLOT_ID::DOOR_PANEL_LEFT, CAR_SLOT_ID::DOOR_PANEL_RIGHT,
+            CAR_SLOT_ID::DOOR_SILL_LEFT,  CAR_SLOT_ID::DOOR_SILL_RIGHT,
+            CAR_SLOT_ID::HOOD_UNDER,      CAR_SLOT_ID::TRUNK_UNDER,
+        };
+
+        BodyShopSection& B = CarConfigs[CarType].BodyShop;
+
+        bool ExtraEnabled[6] = {
+            B.Attachment5, B.Attachment6, B.Attachment7,
+            B.Attachment8, B.Attachment9, B.Attachment10,
+        };
+
+        for (int i = 0; i < 6; i++)
+            if (B.Attachments > 5 + i && ExtraEnabled[i])
+                *((BYTE*)RideInfo + 2104 + ExtraAttachmentSlots[i]) = 1;
+    }
+
+    // Resolved here rather than at the top: the widebody and showengine blocks above decide which
+    // slots are still on the car, and a part they have hidden must not go on governing others.
+    PartLink_Resolve(RideInfo);
     PartLink_ApplyVisibility(RideInfo);
 }
 

@@ -27,7 +27,7 @@ void LoadCarConfigs()
 	DefaultCarConfig.CarTypeInfo = (DWORD*)((*(DWORD*)_CarTypeInfoArray) + ReplacementCar * SingleCarTypeInfoBlockSize);
 
 	// Main
-	DefaultCarConfig.Main.ForceLODA = mINI_ReadInteger(GeneralINI, "Main", "ForceLODA", 0) != 0;
+	DefaultCarConfig.Main.ForceLODA = mINI_ReadInteger(GeneralINI, "Main", "ForceLODA", 1) != 0;
 	DefaultCarConfig.Main.InitiallyUnlocked = mINI_ReadInteger(GeneralINI, "Main", "InitiallyUnlocked", -1);
 	DefaultCarConfig.Main.GameType = mINI_ReadInteger(GeneralINI, "Main", "GameType", GetDefaultGameType(ReplacementCar));
 	DefaultCarConfig.Main.InductionType = mINI_ReadInteger(GeneralINI, "Main", "InductionType", 0);
@@ -35,6 +35,10 @@ void LoadCarConfigs()
 	DefaultCarConfig.Main.SyncVisualPartsWithPhysics = mINI_ReadInteger(GeneralINI, "Main", "SyncVisualPartsWithPhysics", 1);
 	DefaultCarConfig.Main.SyncBrakesWithPhysics = mINI_ReadInteger(GeneralINI, "Main", "SyncBrakesWithPhysics", DefaultCarConfig.Main.SyncVisualPartsWithPhysics) != 0;
 	DefaultCarConfig.Main.MirrorBrakes = mINI_ReadInteger(GeneralINI, "Main", "MirrorBrakes", 1) != 0;
+	DefaultCarConfig.Main.AlwaysShowHoodUnder = mINI_ReadInteger(GeneralINI, "Main", "AlwaysShowHoodUnder", 0) != 0;
+	DefaultCarConfig.Main.AlwaysShowTrunkUnder = mINI_ReadInteger(GeneralINI, "Main", "AlwaysShowTrunkUnder", 0) != 0;
+	DefaultCarConfig.Main.AlwaysShowDoorPanels = mINI_ReadInteger(GeneralINI, "Main", "AlwaysShowDoorPanels", 0) != 0;
+	DefaultCarConfig.Main.AlwaysShowDoorSills = mINI_ReadInteger(GeneralINI, "Main", "AlwaysShowDoorSills", 0) != 0;
 	DefaultCarConfig.Main.CanBeDrivenByAI = mINI_ReadInteger(GeneralINI, "Main", "CanBeDrivenByAI", 1) != 0;
 
 	// CarRenderInfo
@@ -89,12 +93,18 @@ void LoadCarConfigs()
 	DefaultCarConfig.BodyShop.RimsCustom = mINI_ReadInteger(GeneralINI, "BodyShop", "RimsCustom", 0) != 0;
 	DefaultCarConfig.BodyShop.CarbonFiber = mINI_ReadInteger(GeneralINI, "BodyShop", "CarbonFiber", 1) != 0;
 	DefaultCarConfig.BodyShop.WideBodyKits = mINI_ReadInteger(GeneralINI, "BodyShop", "WideBodyKits", 1) != 0;
-	DefaultCarConfig.BodyShop.Attachments = mINI_ReadInteger(GeneralINI, "BodyShop", "Attachments", 0) % 6;
+	DefaultCarConfig.BodyShop.Attachments = mINI_ReadInteger(GeneralINI, "BodyShop", "Attachments", 0) % 12;
 	DefaultCarConfig.BodyShop.Attachment0 = mINI_ReadInteger(GeneralINI, "BodyShop", "Attachment0", DefaultCarConfig.BodyShop.Attachments > 0) != 0;
 	DefaultCarConfig.BodyShop.Attachment1 = mINI_ReadInteger(GeneralINI, "BodyShop", "Attachment1", DefaultCarConfig.BodyShop.Attachments > 1) != 0;
 	DefaultCarConfig.BodyShop.Attachment2 = mINI_ReadInteger(GeneralINI, "BodyShop", "Attachment2", DefaultCarConfig.BodyShop.Attachments > 2) != 0;
 	DefaultCarConfig.BodyShop.Attachment3 = mINI_ReadInteger(GeneralINI, "BodyShop", "Attachment3", DefaultCarConfig.BodyShop.Attachments > 3) != 0;
 	DefaultCarConfig.BodyShop.Attachment4 = mINI_ReadInteger(GeneralINI, "BodyShop", "Attachment4", DefaultCarConfig.BodyShop.Attachments > 4) != 0;
+	DefaultCarConfig.BodyShop.Attachment5 = mINI_ReadInteger(GeneralINI, "BodyShop", "Attachment5", DefaultCarConfig.BodyShop.Attachments > 5) != 0;
+	DefaultCarConfig.BodyShop.Attachment6 = mINI_ReadInteger(GeneralINI, "BodyShop", "Attachment6", DefaultCarConfig.BodyShop.Attachments > 6) != 0;
+	DefaultCarConfig.BodyShop.Attachment7 = mINI_ReadInteger(GeneralINI, "BodyShop", "Attachment7", DefaultCarConfig.BodyShop.Attachments > 7) != 0;
+	DefaultCarConfig.BodyShop.Attachment8 = mINI_ReadInteger(GeneralINI, "BodyShop", "Attachment8", DefaultCarConfig.BodyShop.Attachments > 8) != 0;
+	DefaultCarConfig.BodyShop.Attachment9 = mINI_ReadInteger(GeneralINI, "BodyShop", "Attachment9", DefaultCarConfig.BodyShop.Attachments > 9) != 0;
+	DefaultCarConfig.BodyShop.Attachment10 = mINI_ReadInteger(GeneralINI, "BodyShop", "Attachment10", DefaultCarConfig.BodyShop.Attachments > 10) != 0;
 
 	// Performance
 	DefaultCarConfig.Performance.Engine = mINI_ReadInteger(GeneralINI, "Performance", "Engine", 1) != 0;
@@ -196,6 +206,12 @@ void LoadCarConfigs()
 	DefaultCarConfig.Icons.BodyShopAttachment2 = mINI_ReadHashS(GeneralINI, "Icons", "BodyShopAttachment2", "VISUAL_PART_ATTACHMENT3");
 	DefaultCarConfig.Icons.BodyShopAttachment3 = mINI_ReadHashS(GeneralINI, "Icons", "BodyShopAttachment3", "VISUAL_PART_ATTACHMENT4");
 	DefaultCarConfig.Icons.BodyShopAttachment4 = mINI_ReadHashS(GeneralINI, "Icons", "BodyShopAttachment4", "VISUAL_PART_ATTACHMENT5");
+	DefaultCarConfig.Icons.BodyShopAttachment5 = mINI_ReadHashS(GeneralINI, "Icons", "BodyShopAttachment5", "VISUAL_PART_ATTACHMENT6");
+	DefaultCarConfig.Icons.BodyShopAttachment6 = mINI_ReadHashS(GeneralINI, "Icons", "BodyShopAttachment6", "VISUAL_PART_ATTACHMENT7");
+	DefaultCarConfig.Icons.BodyShopAttachment7 = mINI_ReadHashS(GeneralINI, "Icons", "BodyShopAttachment7", "VISUAL_PART_ATTACHMENT8");
+	DefaultCarConfig.Icons.BodyShopAttachment8 = mINI_ReadHashS(GeneralINI, "Icons", "BodyShopAttachment8", "VISUAL_PART_ATTACHMENT9");
+	DefaultCarConfig.Icons.BodyShopAttachment9 = mINI_ReadHashS(GeneralINI, "Icons", "BodyShopAttachment9", "VISUAL_PART_ATTACHMENT10");
+	DefaultCarConfig.Icons.BodyShopAttachment10 = mINI_ReadHashS(GeneralINI, "Icons", "BodyShopAttachment10", "VISUAL_PART_ATTACHMENT11");
 	DefaultCarConfig.Icons.PerformanceEngine = mINI_ReadHashS(GeneralINI, "Icons", "PerformanceEngine", "PERFORMANCE_ENGINE");
 	DefaultCarConfig.Icons.PerformanceECU = mINI_ReadHashS(GeneralINI, "Icons", "PerformanceECU", "PERFORMANCE_ECU");
 	DefaultCarConfig.Icons.PerformanceTransmission = mINI_ReadHashS(GeneralINI, "Icons", "PerformanceTransmission", "PERFORMANCE_TRANSMISSION");
@@ -426,6 +442,12 @@ void LoadCarConfigs()
 	DefaultCarConfig.Names.BodyShopAttachment2 = mINI_ReadHashS(GeneralINI, "Names", "BodyShopAttachment2", "VISUAL_PART_ATTACHMENT3");
 	DefaultCarConfig.Names.BodyShopAttachment3 = mINI_ReadHashS(GeneralINI, "Names", "BodyShopAttachment3", "VISUAL_PART_ATTACHMENT4");
 	DefaultCarConfig.Names.BodyShopAttachment4 = mINI_ReadHashS(GeneralINI, "Names", "BodyShopAttachment4", "VISUAL_PART_ATTACHMENT5");
+	DefaultCarConfig.Names.BodyShopAttachment5 = mINI_ReadHashS(GeneralINI, "Names", "BodyShopAttachment5", "VISUAL_PART_ATTACHMENT6");
+	DefaultCarConfig.Names.BodyShopAttachment6 = mINI_ReadHashS(GeneralINI, "Names", "BodyShopAttachment6", "VISUAL_PART_ATTACHMENT7");
+	DefaultCarConfig.Names.BodyShopAttachment7 = mINI_ReadHashS(GeneralINI, "Names", "BodyShopAttachment7", "VISUAL_PART_ATTACHMENT8");
+	DefaultCarConfig.Names.BodyShopAttachment8 = mINI_ReadHashS(GeneralINI, "Names", "BodyShopAttachment8", "VISUAL_PART_ATTACHMENT9");
+	DefaultCarConfig.Names.BodyShopAttachment9 = mINI_ReadHashS(GeneralINI, "Names", "BodyShopAttachment9", "VISUAL_PART_ATTACHMENT10");
+	DefaultCarConfig.Names.BodyShopAttachment10 = mINI_ReadHashS(GeneralINI, "Names", "BodyShopAttachment10", "VISUAL_PART_ATTACHMENT11");
 	DefaultCarConfig.Names.PerformanceEngine = mINI_ReadHashS(GeneralINI, "Names", "PerformanceEngine", "PERF_CATEGORY_ENGINE");
 	DefaultCarConfig.Names.PerformanceECU = mINI_ReadHashS(GeneralINI, "Names", "PerformanceECU", "PERF_CATEGORY_ECU");
 	DefaultCarConfig.Names.PerformanceTransmission = mINI_ReadHashS(GeneralINI, "Names", "PerformanceTransmission", "PERF_CATEGORY_TRANSMISSION");
@@ -600,6 +622,10 @@ void LoadCarConfigs()
 		ACarConfig.Main.SyncBrakesWithPhysics = mINI_ReadInteger(CarINI, "Main", "SyncBrakesWithPhysics",
 			mINI_ReadInteger(CarINI, "Main", "SyncVisualPartsWithPhysics", DefaultCarConfig.Main.SyncBrakesWithPhysics)) != 0;
 		ACarConfig.Main.MirrorBrakes = mINI_ReadInteger(CarINI, "Main", "MirrorBrakes", DefaultCarConfig.Main.MirrorBrakes) != 0;
+		ACarConfig.Main.AlwaysShowHoodUnder = mINI_ReadInteger(CarINI, "Main", "AlwaysShowHoodUnder", DefaultCarConfig.Main.AlwaysShowHoodUnder) != 0;
+		ACarConfig.Main.AlwaysShowTrunkUnder = mINI_ReadInteger(CarINI, "Main", "AlwaysShowTrunkUnder", DefaultCarConfig.Main.AlwaysShowTrunkUnder) != 0;
+		ACarConfig.Main.AlwaysShowDoorPanels = mINI_ReadInteger(CarINI, "Main", "AlwaysShowDoorPanels", DefaultCarConfig.Main.AlwaysShowDoorPanels) != 0;
+		ACarConfig.Main.AlwaysShowDoorSills = mINI_ReadInteger(CarINI, "Main", "AlwaysShowDoorSills", DefaultCarConfig.Main.AlwaysShowDoorSills) != 0;
 		ACarConfig.Main.CanBeDrivenByAI = mINI_ReadInteger(CarINI, "Main", "CanBeDrivenByAI", DefaultCarConfig.Main.CanBeDrivenByAI) != 0;
 
 		// CarRenderInfo
@@ -654,12 +680,18 @@ void LoadCarConfigs()
 		ACarConfig.BodyShop.RimsCustom = mINI_ReadInteger(CarINI, "BodyShop", "RimsCustom", DefaultCarConfig.BodyShop.RimsCustom) != 0;
 		ACarConfig.BodyShop.CarbonFiber = mINI_ReadInteger(CarINI, "BodyShop", "CarbonFiber", DefaultCarConfig.BodyShop.CarbonFiber) != 0;
 		ACarConfig.BodyShop.WideBodyKits = mINI_ReadInteger(CarINI, "BodyShop", "WideBodyKits", DefaultCarConfig.BodyShop.WideBodyKits) != 0;
-		ACarConfig.BodyShop.Attachments = mINI_ReadInteger(CarINI, "BodyShop", "Attachments", DefaultCarConfig.BodyShop.Attachments) % 6;
+		ACarConfig.BodyShop.Attachments = mINI_ReadInteger(CarINI, "BodyShop", "Attachments", DefaultCarConfig.BodyShop.Attachments) % 12;
 		ACarConfig.BodyShop.Attachment0 = mINI_ReadInteger(CarINI, "BodyShop", "Attachment0", ACarConfig.BodyShop.Attachments > 0) != 0;
 		ACarConfig.BodyShop.Attachment1 = mINI_ReadInteger(CarINI, "BodyShop", "Attachment1", ACarConfig.BodyShop.Attachments > 1) != 0;
 		ACarConfig.BodyShop.Attachment2 = mINI_ReadInteger(CarINI, "BodyShop", "Attachment2", ACarConfig.BodyShop.Attachments > 2) != 0;
 		ACarConfig.BodyShop.Attachment3 = mINI_ReadInteger(CarINI, "BodyShop", "Attachment3", ACarConfig.BodyShop.Attachments > 3) != 0;
 		ACarConfig.BodyShop.Attachment4 = mINI_ReadInteger(CarINI, "BodyShop", "Attachment4", ACarConfig.BodyShop.Attachments > 4) != 0;
+		ACarConfig.BodyShop.Attachment5 = mINI_ReadInteger(CarINI, "BodyShop", "Attachment5", ACarConfig.BodyShop.Attachments > 4) != 0;
+		ACarConfig.BodyShop.Attachment6 = mINI_ReadInteger(CarINI, "BodyShop", "Attachment6", ACarConfig.BodyShop.Attachments > 4) != 0;
+		ACarConfig.BodyShop.Attachment7 = mINI_ReadInteger(CarINI, "BodyShop", "Attachment7", ACarConfig.BodyShop.Attachments > 4) != 0;
+		ACarConfig.BodyShop.Attachment8 = mINI_ReadInteger(CarINI, "BodyShop", "Attachment8", ACarConfig.BodyShop.Attachments > 4) != 0;
+		ACarConfig.BodyShop.Attachment9 = mINI_ReadInteger(CarINI, "BodyShop", "Attachment9", ACarConfig.BodyShop.Attachments > 4) != 0;
+		ACarConfig.BodyShop.Attachment10 = mINI_ReadInteger(CarINI, "BodyShop", "Attachment10", ACarConfig.BodyShop.Attachments > 4) != 0;
 
 		// Performance
 		ACarConfig.Performance.Engine = mINI_ReadInteger(CarINI, "Performance", "Engine", DefaultCarConfig.Performance.Engine) != 0;
@@ -761,6 +793,12 @@ void LoadCarConfigs()
 		ACarConfig.Icons.BodyShopAttachment2 = mINI_ReadHash(CarINI, "Icons", "BodyShopAttachment2", DefaultCarConfig.Icons.BodyShopAttachment2);
 		ACarConfig.Icons.BodyShopAttachment3 = mINI_ReadHash(CarINI, "Icons", "BodyShopAttachment3", DefaultCarConfig.Icons.BodyShopAttachment3);
 		ACarConfig.Icons.BodyShopAttachment4 = mINI_ReadHash(CarINI, "Icons", "BodyShopAttachment4", DefaultCarConfig.Icons.BodyShopAttachment4);
+		ACarConfig.Icons.BodyShopAttachment5 = mINI_ReadHash(CarINI, "Icons", "BodyShopAttachment5", DefaultCarConfig.Icons.BodyShopAttachment5);
+		ACarConfig.Icons.BodyShopAttachment6 = mINI_ReadHash(CarINI, "Icons", "BodyShopAttachment6", DefaultCarConfig.Icons.BodyShopAttachment6);
+		ACarConfig.Icons.BodyShopAttachment7 = mINI_ReadHash(CarINI, "Icons", "BodyShopAttachment7", DefaultCarConfig.Icons.BodyShopAttachment7);
+		ACarConfig.Icons.BodyShopAttachment8 = mINI_ReadHash(CarINI, "Icons", "BodyShopAttachment8", DefaultCarConfig.Icons.BodyShopAttachment8);
+		ACarConfig.Icons.BodyShopAttachment9 = mINI_ReadHash(CarINI, "Icons", "BodyShopAttachment9", DefaultCarConfig.Icons.BodyShopAttachment9);
+		ACarConfig.Icons.BodyShopAttachment10 = mINI_ReadHash(CarINI, "Icons", "BodyShopAttachment10", DefaultCarConfig.Icons.BodyShopAttachment10);
 		ACarConfig.Icons.PerformanceEngine = mINI_ReadHash(CarINI, "Icons", "PerformanceEngine", DefaultCarConfig.Icons.PerformanceEngine);
 		ACarConfig.Icons.PerformanceECU = mINI_ReadHash(CarINI, "Icons", "PerformanceECU", DefaultCarConfig.Icons.PerformanceECU);
 		ACarConfig.Icons.PerformanceTransmission = mINI_ReadHash(CarINI, "Icons", "PerformanceTransmission", DefaultCarConfig.Icons.PerformanceTransmission);
@@ -991,6 +1029,12 @@ void LoadCarConfigs()
 		ACarConfig.Names.BodyShopAttachment2 = mINI_ReadHash(CarINI, "Names", "BodyShopAttachment2", DefaultCarConfig.Names.BodyShopAttachment2);
 		ACarConfig.Names.BodyShopAttachment3 = mINI_ReadHash(CarINI, "Names", "BodyShopAttachment3", DefaultCarConfig.Names.BodyShopAttachment3);
 		ACarConfig.Names.BodyShopAttachment4 = mINI_ReadHash(CarINI, "Names", "BodyShopAttachment4", DefaultCarConfig.Names.BodyShopAttachment4);
+		ACarConfig.Names.BodyShopAttachment5 = mINI_ReadHash(CarINI, "Names", "BodyShopAttachment5", DefaultCarConfig.Names.BodyShopAttachment5);
+		ACarConfig.Names.BodyShopAttachment6 = mINI_ReadHash(CarINI, "Names", "BodyShopAttachment6", DefaultCarConfig.Names.BodyShopAttachment6);
+		ACarConfig.Names.BodyShopAttachment7 = mINI_ReadHash(CarINI, "Names", "BodyShopAttachment7", DefaultCarConfig.Names.BodyShopAttachment7);
+		ACarConfig.Names.BodyShopAttachment8 = mINI_ReadHash(CarINI, "Names", "BodyShopAttachment8", DefaultCarConfig.Names.BodyShopAttachment8);
+		ACarConfig.Names.BodyShopAttachment9 = mINI_ReadHash(CarINI, "Names", "BodyShopAttachment9", DefaultCarConfig.Names.BodyShopAttachment9);
+		ACarConfig.Names.BodyShopAttachment10 = mINI_ReadHash(CarINI, "Names", "BodyShopAttachment10", DefaultCarConfig.Names.BodyShopAttachment10);
 		ACarConfig.Names.PerformanceEngine = mINI_ReadHash(CarINI, "Names", "PerformanceEngine", DefaultCarConfig.Names.PerformanceEngine);
 		ACarConfig.Names.PerformanceECU = mINI_ReadHash(CarINI, "Names", "PerformanceECU", DefaultCarConfig.Names.PerformanceECU);
 		ACarConfig.Names.PerformanceTransmission = mINI_ReadHash(CarINI, "Names", "PerformanceTransmission", DefaultCarConfig.Names.PerformanceTransmission);
@@ -1243,6 +1287,53 @@ void LoadCarConfigs()
 	CarConfigs = std::move(CarConfigs_temp); // Replace global list with temp
 }
 
+void LoadPresetCarOverrides()
+{
+	PresetCarOverrides.clear();
+
+	auto PresetCarsINIPath = CurrentWorkingDirectory / "UnlimiterData" / "_PresetCars.ini";
+	mINI::INIFile PresetCarsINIFile(PresetCarsINIPath.string());
+	mINI::INIStructure PresetCarsINI;
+	PresetCarsINIFile.read(PresetCarsINI);
+
+	PresetCarsOnlyListed = mINI_ReadInteger(PresetCarsINI, "PresetCars", "OnlyListedPresets", 0) != 0;
+
+	for (int g = 0; g < PARTLINK_MAX_PRESET_GROUPS; g++)
+	{
+		char Key[16];
+		sprintf(Key, "GroupName%d", g);
+
+		char* Value = mINI_ReadString(PresetCarsINI, "PresetCars", Key, "");
+		if (Value[0]) sprintf(PresetGroupNames[g], "%s", Value);
+	}
+
+	for (auto const& Section : PresetCarsINI)
+	{
+		std::string const& Name = Section.first;
+
+		if (Name.empty()) continue;
+		if (_stricmp(Name.c_str(), "PresetCars") == 0) continue;
+
+		PresetCarOverride o;
+
+		o.NameHash = FEHashUpper(Name.c_str());
+		o.Enabled = mINI_ReadInteger(PresetCarsINI, Name, "Enabled", 1) != 0;
+		o.Group = mINI_ReadInteger(PresetCarsINI, Name, "Group", 0);
+
+		char* Cond = mINI_ReadString(PresetCarsINI, Name, "UnlockCondition", "None");
+		o.UnlockCondition = (_stricmp(Cond, "Code") == 0) ? PRESET_UNLOCK_CODE : PRESET_UNLOCK_NONE;
+		char* Code = mINI_ReadString(PresetCarsINI, Name, "UnlockValue", "");
+		strncpy(o.UnlockValue, Code, sizeof(o.UnlockValue) - 1);
+		o.UnlockValue[sizeof(o.UnlockValue) - 1] = 0;
+
+		char* Display = mINI_ReadString(PresetCarsINI, Name, "DisplayName", "");
+		strncpy(o.DisplayName, Display, sizeof(o.DisplayName) - 1);
+		o.DisplayName[sizeof(o.DisplayName) - 1] = 0;
+
+		PresetCarOverrides.push_back(o);
+	}
+}
+
 void LoadRimBrands_ApplyCountPatches(size_t VectorSize)
 {
 	int NumRimBrands = (int)(VectorSize > 0 ? VectorSize - 1 : 0) + 0x702;
@@ -1267,7 +1358,6 @@ bool LoadRimBrandsFromFolder()
 	struct PendingBrand
 	{
 		RimBrand Brand;
-		int Order;
 		std::string FileName;
 	};
 
@@ -1319,11 +1409,8 @@ bool LoadRimBrandsFromFolder()
 				continue;
 			}
 
-			if (mINI_ReadInteger(BrandINI, "RimBrand", "Enabled", 1) == 0) continue;
-
-			PendingBrand P;
+				PendingBrand P;
 			P.FileName = Stem;
-			P.Order = mINI_ReadInteger(BrandINI, "RimBrand", "Order", 1000);
 
 			// BrandName is hashed and matched against the BRAND_NAME attribute in Binary.
 			// Keep it plain ASCII - the displayed name comes from String.
@@ -1349,9 +1436,10 @@ bool LoadRimBrandsFromFolder()
 
 	// Order first, filename second, so the list is stable across machines instead of
 	// depending on directory enumeration order.
+	// Filename order. Deterministic across machines, and renaming a file is the only thing a
+	// sort key would have given us anyway.
 	std::sort(Pending.begin(), Pending.end(), [](const PendingBrand& a, const PendingBrand& b)
 	{
-		if (a.Order != b.Order) return a.Order < b.Order;
 		return _stricmp(a.FileName.c_str(), b.FileName.c_str()) < 0;
 	});
 

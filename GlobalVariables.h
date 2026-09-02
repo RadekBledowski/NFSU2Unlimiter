@@ -341,6 +341,10 @@ typedef struct
 	bool SyncVisualPartsWithPhysics;
 	bool SyncBrakesWithPhysics;
 	bool MirrorBrakes;
+	bool AlwaysShowHoodUnder;
+	bool AlwaysShowTrunkUnder;
+	bool AlwaysShowDoorPanels;
+	bool AlwaysShowDoorSills;
 	bool CanBeDrivenByAI;
 } MainSection;
 
@@ -413,6 +417,12 @@ typedef struct
 	bool Attachment2;
 	bool Attachment3;
 	bool Attachment4;
+	bool Attachment5;
+	bool Attachment6;
+	bool Attachment7;
+	bool Attachment8;
+	bool Attachment9;
+	bool Attachment10;
 } BodyShopSection;
 
 typedef struct
@@ -522,6 +532,12 @@ typedef struct
 	DWORD BodyShopAttachment2;
 	DWORD BodyShopAttachment3;
 	DWORD BodyShopAttachment4;
+	DWORD BodyShopAttachment5;
+	DWORD BodyShopAttachment6;
+	DWORD BodyShopAttachment7;
+	DWORD BodyShopAttachment8;
+	DWORD BodyShopAttachment9;
+	DWORD BodyShopAttachment10;
 	DWORD PerformanceEngine;
 	DWORD PerformanceECU;
 	DWORD PerformanceTransmission;
@@ -754,6 +770,12 @@ typedef struct
 	DWORD BodyShopAttachment2;
 	DWORD BodyShopAttachment3;
 	DWORD BodyShopAttachment4;
+	DWORD BodyShopAttachment5;
+	DWORD BodyShopAttachment6;
+	DWORD BodyShopAttachment7;
+	DWORD BodyShopAttachment8;
+	DWORD BodyShopAttachment9;
+	DWORD BodyShopAttachment10;
 	DWORD PerformanceEngine;
 	DWORD PerformanceECU;
 	DWORD PerformanceTransmission;
@@ -1051,6 +1073,7 @@ StarGazer TheStarGazer;
 
 // Camera Info Stuff is in CameraInfo.h
 bool UseCameraInfo = false;
+bool StaticCameraGenericFallback = true;
 
 float CarSelectTireSteerAngle_Backup;
 
