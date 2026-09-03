@@ -51,9 +51,12 @@ void PartSelectionScreen_AddCategoryChecked(DWORD* PSS, unsigned int CarSlotID, 
 
 void __fastcall PartSelectionScreen_SetupBodyShop(DWORD* PartSelectionScreen, void* EDX_Unused)
 {
-    // gTheRideInfo is the object this function already reads parts from elsewhere, so it is the
-    // right one to resolve against, and the categories below need the state to be current.
-    PartLink_Resolve((DWORD*)gTheRideInfo);
+    // Rebuild the car before deciding which categories to show. Resolving on its own was not
+    // enough: on the way into the Body Shop this runs before UpdatePartsEnabled has touched the
+    // car, so the link state still described whatever was looked at last and every category came
+    // back, including a hood a SWAPSLOT was driving. UpdatePartsEnabled resolves and applies in
+    // one go, so after this the state describes the car the categories are being built for.
+    RideInfo_UpdatePartsEnabled((DWORD*)gTheRideInfo, nullptr);
     PartLinkTraceCategories();
 
     // Read Part Options for the car

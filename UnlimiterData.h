@@ -1349,11 +1349,45 @@ void LoadRimBrands_ApplyCountPatches(size_t VectorSize)
 // Files starting with '_' are reserved (_Settings.ini, _Custom.ini).
 // Returns false if the folder is absent or holds no usable brand file, so the caller
 // can fall back to the legacy single-file _RimBrands.ini.
-bool LoadRimBrandsFromFolder()
+// A per-brand file holds exactly one brand, so the section name carries no information and
+// insisting on [RimBrand] only creates a way to get it silently wrong: a file headed [Brand7],
+// which is what copying a block out of _RimBrands.ini gives you, read every key as missing and
+// fell back to the defaults, so the brand appeared with the stock icon and no rims.
+// Availability comes under two sets of key names. v4.0.0.405 reads AvailableForRegularCars and
+// AvailableForSUVs; newer nlgxzef builds take the shorter Car and Suv, and files written for
+// those leave a key out entirely to mean no. Falling back to the built-in defaults for a missing
+// Suv would be wrong, because those defaults are positional: they are ordered to the vanilla
+// brand list, so a file with its own order has every brand reading the flag meant for another.
+//
+// If a section uses either short name, both values come from the short pair and a missing one is
+// a no. Otherwise the long names apply with the defaults they always had.
+void ReadRimBrandAvailability(mINI::INIStructure& INI, std::string Sec,
+	bool& Regular, bool& SUV, int DefaultRegular, int DefaultSUV)
+{
+	if (INI[Sec].has("Car") || INI[Sec].has("Suv"))
+	{
+		Regular = mINI_ReadInteger(INI, Sec, "Car", 0) != 0;
+		SUV = mINI_ReadInteger(INI, Sec, "Suv", 0) != 0;
+		return;
+	}
+
+	Regular = mINI_ReadInteger(INI, Sec, "AvailableForRegularCars", DefaultRegular) != 0;
+	SUV = mINI_ReadInteger(INI, Sec, "AvailableForSUVs", DefaultSUV) != 0;
+}
+
+std::string FirstSectionName(mINI::INIStructure& INI)
+{
+	for (auto const& Section : INI)
+		if (!Section.first.empty()) return Section.first;
+
+	return "RimBrand";
+}
+
+void MergeRimBrandsFromFolder()
 {
 	auto WheelBrandsDir = CurrentWorkingDirectory / "UnlimiterData" / "WheelBrands";
 
-	if (!std::filesystem::is_directory(WheelBrandsDir)) return false;
+	if (!std::filesystem::is_directory(WheelBrandsDir)) return;
 
 	struct PendingBrand
 	{
@@ -1373,7 +1407,7 @@ bool LoadRimBrandsFromFolder()
 	CustomBrand.AvailableForRegularCars = true;
 	CustomBrand.AvailableForSUVs = true;
 
-	bool FoundSettings = false;
+	bool FoundCustom = false;
 
 	try
 	{
@@ -1389,22 +1423,25 @@ bool LoadRimBrandsFromFolder()
 			mINI::INIStructure BrandINI;
 			BrandINIFile.read(BrandINI);
 
+			std::string Sec = FirstSectionName(BrandINI);
+
 			if (Stem[0] == '_') // reserved
 			{
 				if (_stricmp(Stem.c_str(), "_Settings") == 0)
 				{
-					RemoveRimSizeRestrictions = mINI_ReadInteger(BrandINI, "Settings", "RemoveRimSizeRestrictions", 0) != 0;
-					FoundSettings = true;
+					// Overrides the value _RimBrands.ini already set, only if the file is there
+					RemoveRimSizeRestrictions = mINI_ReadInteger(BrandINI, "Settings", "RemoveRimSizeRestrictions", RemoveRimSizeRestrictions) != 0;
 				}
 				else if (_stricmp(Stem.c_str(), "_Custom") == 0)
 				{
-					CustomBrand.BrandNameHash = mINI_ReadHashS(BrandINI, "RimBrand", "BrandName", "");
-					CustomBrand.StringHash = mINI_ReadHashS(BrandINI, "RimBrand", "String", "RIMS_BRAND_CUSTOM");
-					CustomBrand.TextureHash = mINI_ReadHashS(BrandINI, "RimBrand", "Texture", "VISUAL_RIMS_BRAND_CUSTOM");
-					CustomBrand.NoRimSize = mINI_ReadInteger(BrandINI, "RimBrand", "NoRimSize", 1) != 0;
-					CustomBrand.HideBrandName = mINI_ReadInteger(BrandINI, "RimBrand", "HideBrandName", 1) != 0;
-					CustomBrand.AvailableForRegularCars = mINI_ReadInteger(BrandINI, "RimBrand", "AvailableForRegularCars", 1) != 0;
-					CustomBrand.AvailableForSUVs = mINI_ReadInteger(BrandINI, "RimBrand", "AvailableForSUVs", 1) != 0;
+					CustomBrand.BrandNameHash = mINI_ReadHashS(BrandINI, Sec, "BrandName", "");
+					CustomBrand.StringHash = mINI_ReadHashS(BrandINI, Sec, "String", "RIMS_BRAND_CUSTOM");
+					CustomBrand.TextureHash = mINI_ReadHashS(BrandINI, Sec, "Texture", "VISUAL_RIMS_BRAND_CUSTOM");
+					CustomBrand.NoRimSize = mINI_ReadInteger(BrandINI, Sec, "NoRimSize", 1) != 0;
+					CustomBrand.HideBrandName = mINI_ReadInteger(BrandINI, Sec, "HideBrandName", 1) != 0;
+					ReadRimBrandAvailability(BrandINI, Sec,
+						CustomBrand.AvailableForRegularCars, CustomBrand.AvailableForSUVs, 1, 1);
+					FoundCustom = true;
 				}
 				continue;
 			}
@@ -1414,25 +1451,24 @@ bool LoadRimBrandsFromFolder()
 
 			// BrandName is hashed and matched against the BRAND_NAME attribute in Binary.
 			// Keep it plain ASCII - the displayed name comes from String.
-			P.Brand.BrandNameHash = mINI_ReadHashS(BrandINI, "RimBrand", "BrandName", Stem.c_str());
-			P.Brand.StringHash = mINI_ReadHashS(BrandINI, "RimBrand", "String", "RIMS_BRAND_STOCK");
-			P.Brand.TextureHash = mINI_ReadHashS(BrandINI, "RimBrand", "Texture", "VISUAL_RIMS_BRAND_STOCK");
-			P.Brand.NoRimSize = mINI_ReadInteger(BrandINI, "RimBrand", "NoRimSize", 0) != 0;
-			P.Brand.HideBrandName = mINI_ReadInteger(BrandINI, "RimBrand", "HideBrandName", 0) != 0;
-			P.Brand.AvailableForRegularCars = mINI_ReadInteger(BrandINI, "RimBrand", "AvailableForRegularCars", 1) != 0;
-			P.Brand.AvailableForSUVs = mINI_ReadInteger(BrandINI, "RimBrand", "AvailableForSUVs", 0) != 0;
+			P.Brand.BrandNameHash = mINI_ReadHashS(BrandINI, Sec, "BrandName", Stem.c_str());
+			P.Brand.StringHash = mINI_ReadHashS(BrandINI, Sec, "String", "RIMS_BRAND_STOCK");
+			P.Brand.TextureHash = mINI_ReadHashS(BrandINI, Sec, "Texture", "VISUAL_RIMS_BRAND_STOCK");
+			P.Brand.NoRimSize = mINI_ReadInteger(BrandINI, Sec, "NoRimSize", 0) != 0;
+			P.Brand.HideBrandName = mINI_ReadInteger(BrandINI, Sec, "HideBrandName", 0) != 0;
+			ReadRimBrandAvailability(BrandINI, Sec,
+				P.Brand.AvailableForRegularCars, P.Brand.AvailableForSUVs, 1, 0);
 
 			Pending.push_back(P);
 		}
 	}
 	catch (const std::exception&)
 	{
-		return false; // unreadable folder - fall back to _RimBrands.ini
+		return; // unreadable folder, the ini list stands on its own
 	}
 
-	if (Pending.empty()) return false;
+	if (Pending.empty()) return;
 
-	if (!FoundSettings) RemoveRimSizeRestrictions = false;
 
 	// Order first, filename second, so the list is stable across machines instead of
 	// depending on directory enumeration order.
@@ -1443,25 +1479,44 @@ bool LoadRimBrandsFromFolder()
 		return _stricmp(a.FileName.c_str(), b.FileName.c_str()) < 0;
 	});
 
-	std::vector<RimBrand> RimBrands_temp;
-	RimBrands_temp.reserve(Pending.size() + 1);
+	// Match on BrandName against what the ini already gave us: a file for a brand the ini has
+	// replaces that entry in place, keeping its position, and a file for one it does not have is
+	// appended. Two files naming the same brand collapse to one, which is what happened when a
+	// pack shipped Davin.ini next to a Streetspin.ini that also said DAVIN.
+	for (size_t i = 0; i < Pending.size(); i++)
+	{
+		bool Replaced = false;
 
-	RimBrands_temp.push_back(CustomBrand);
+		for (size_t j = 0; j < RimBrands.size(); j++)
+		{
+			if (RimBrands[j].BrandNameHash != Pending[i].Brand.BrandNameHash) continue;
 
-	for (size_t i = 0; i < Pending.size(); i++) RimBrands_temp.push_back(Pending[i].Brand);
+			RimBrands[j] = Pending[i].Brand;
+			Replaced = true;
+			break;
+		}
 
-	RimBrands = std::move(RimBrands_temp); // Replace global list with temp
+		if (!Replaced) RimBrands.push_back(Pending[i].Brand);
+	}
 
-	LoadRimBrands_ApplyCountPatches(RimBrands.size());
-	return true;
+	// _Custom.ini, if present, replaces index 0 rather than adding a brand
+	if (FoundCustom && !RimBrands.empty()) RimBrands[0] = CustomBrand;
 }
 
 void LoadRimBrands()
 {
-	// Preferred: one file per brand in UnlimiterData\WheelBrands
-	if (LoadRimBrandsFromFolder()) return;
+	// _RimBrands.ini is the base list and the folder adds to it. Replacing it was wrong: whoever
+	// installs the game decides what the brands are, and a mod that ships its own _RimBrands.ini
+	// names them its own way. UG2NET calls a brand STREETSPIN where vanilla calls it DAVIN, its
+	// Brand0 is "CUSTOM" where vanilla's is "", and it has no GIANELLE, LOWENHART, RACINGHART or
+	// VOLK at all. A folder shipped with one of those two sets fights the other: brands with no
+	// rims, names with no label, the same brand twice under two filenames, and everything past
+	// the twenty-fourth slot with nowhere to go.
+	//
+	// So: read the ini, then let folder files add brands it does not have and replace ones it
+	// does, matched on BrandName. Adding a brand is still one file, and it now works whatever
+	// _RimBrands.ini the install came with.
 
-	// Fallback: legacy single-file _RimBrands.ini
 	RimBrand ARimBrand;
 	std::vector<RimBrand> RimBrands_temp;
 
@@ -1484,13 +1539,16 @@ void LoadRimBrands()
 		ARimBrand.TextureHash = mINI_ReadHashS(RimBrandsINI, RimBrandID, "Texture", GetDefaultRimBrandTexture(i));
 		ARimBrand.NoRimSize = mINI_ReadInteger(RimBrandsINI, RimBrandID, "NoRimSize", i ? 0 : 1) != 0;
 		ARimBrand.HideBrandName = mINI_ReadInteger(RimBrandsINI, RimBrandID, "HideBrandName", i ? 0 : 1) != 0; // FIXED: was never read
-		ARimBrand.AvailableForRegularCars = mINI_ReadInteger(RimBrandsINI, RimBrandID, "AvailableForRegularCars", GetDefaultRimBrandAvailableForRegularCars(i)) != 0;
-		ARimBrand.AvailableForSUVs = mINI_ReadInteger(RimBrandsINI, RimBrandID, "AvailableForSUVs", GetDefaultRimBrandAvailableForSUVs(i)) != 0;
+		ReadRimBrandAvailability(RimBrandsINI, RimBrandID,
+			ARimBrand.AvailableForRegularCars, ARimBrand.AvailableForSUVs,
+			GetDefaultRimBrandAvailableForRegularCars(i), GetDefaultRimBrandAvailableForSUVs(i));
 
 		RimBrands_temp.push_back(ARimBrand); // Add to temp list
 	}
 
 	RimBrands = std::move(RimBrands_temp); // Replace global list with temp
+
+	MergeRimBrandsFromFolder();
 
 	LoadRimBrands_ApplyCountPatches(RimBrands.size());
 }

@@ -193,6 +193,34 @@ void PartLink_Resolve(DWORD* RideInfo)
 		memset(PartLinkGoverned, 0, sizeof(PartLinkGoverned));
 	}
 
+	// Hiding a hood has to take the hood's own parts with it. The game groups them the same way:
+	// the ENGINE case in UpdatePartsEnabled sets HOOD, HOOD_UNDER and DECAL_HOOD visible in one
+	// go. Headlights have nothing hanging off them, which is why HIDESLOT looked like it worked
+	// there and not on a hood: the hood went, its underside and decal stayed, and what was left
+	// still read as a hood.
+	static const int Assembly[][3] =
+	{
+		{ CAR_SLOT_ID::HOOD,       CAR_SLOT_ID::HOOD_UNDER,        CAR_SLOT_ID::DECAL_HOOD },
+		{ CAR_SLOT_ID::TRUNK,      CAR_SLOT_ID::TRUNK_UNDER,       -1 },
+		{ CAR_SLOT_ID::DOOR_LEFT,  CAR_SLOT_ID::DOOR_PANEL_LEFT,   CAR_SLOT_ID::DOOR_SILL_LEFT },
+		{ CAR_SLOT_ID::DOOR_RIGHT, CAR_SLOT_ID::DOOR_PANEL_RIGHT,  CAR_SLOT_ID::DOOR_SILL_RIGHT },
+	};
+
+	for (int a = 0; a < (int)(sizeof(Assembly) / sizeof(Assembly[0])); a++)
+	{
+		if (!PartLinkSlotHidden[Assembly[a][0]]) continue;
+
+		for (int k = 1; k < 3; k++)
+		{
+			int Slot = Assembly[a][k];
+
+			// A slot something else is already driving keeps its own answer
+			if (Slot < 0 || PartLinkSwapTarget[Slot]) continue;
+
+			PartLinkSlotHidden[Slot] = true;
+		}
+	}
+
 	for (int i = 0; i < CAR_SLOT_ID::__NUM; i++)
 		if (PartLinkSlotHidden[i] || PartLinkSwapTarget[i]) PartLinkGoverned[i] = true;
 }
@@ -222,7 +250,10 @@ void PartLink_ApplyVisibility(DWORD* RideInfo)
 
 		if (PartLinkSlotHidden[i])
 		{
-			// Enough for static geometry
+			// Runs after the whole slot loop, so this is the last word on the byte. The ENGINE
+			// case in UpdatePartsEnabled sets HOOD, HOOD_UNDER and DECAL_HOOD back to 1 whenever
+			// an engine part is fitted and the game flow is the front end, and would otherwise
+			// undo this every time the car is rebuilt.
 			*((BYTE*)RideInfo + 2104 + i) = 0;
 
 			// Animated parts ignore the byte, so take the part away as well

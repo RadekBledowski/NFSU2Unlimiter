@@ -1074,6 +1074,7 @@ StarGazer TheStarGazer;
 // Camera Info Stuff is in CameraInfo.h
 bool UseCameraInfo = false;
 bool StaticCameraGenericFallback = true;
+bool SortStockCarsByStage = false;
 
 float CarSelectTireSteerAngle_Backup;
 

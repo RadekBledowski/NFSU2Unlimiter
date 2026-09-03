@@ -162,6 +162,11 @@ struct PresetCarOverride
 // code works whether it is one of the game's own or one we add to the table later.
 bool PresetIsCodeEntered(const char* Code)
 {
+	// The setting is meant to make cheat-gated cars available without the cheats, and a preset
+	// gated by UnlockCondition = Code is exactly that. It was only wired to
+	// IsSponsorCarCheatTriggered, so with it on the presets stayed hidden anyway.
+	if (UnlockSponsorCarsWithoutCheats) return true;
+
 	if (!Code || !Code[0]) return false;
 
 	BYTE* Cheats = CheatScreenData_Cheats;

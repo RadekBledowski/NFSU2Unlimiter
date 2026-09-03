@@ -89,6 +89,12 @@ DWORD* (__thiscall* CarPart_GetNextAppliedAttribute)(DWORD* CarPart, unsigned in
 bool (*IsBrowsingBrakePaint)() = (bool(*)())0x50F1D0;
 //void (__thiscall* RideInfo_UpdatePartsEnabled)(DWORD* CarCustomizeManager) = (void (__thiscall*)(DWORD*))0x61BCD0;
 void(__thiscall* RideInfo_SyncVisualPartsWithPhysics)(DWORD* CarCustomizeManager, bool perf, bool random) = (void(__thiscall*)(DWORD*, bool, bool))0x6399D0;
+// Career unlocks. FindCarUnlockRecord walks CarUnlockList, records of 0x0C, matching the car name
+// hash at +0; +4 and +8 are the event handle for the two build regions.
+// find_event_that_has_car_as_a_reward chains that into FindCareerEventDataByHandle and returns
+// the CareerEventData, or null when no event awards the car.
+DWORD* (__cdecl* find_event_that_has_car_as_a_reward)(DWORD CarNameHash) = (DWORD* (__cdecl*)(DWORD))0x5023B0;
+
 int (*CarAnimManager_GetLocationState)(int CarAnimManager, int CarAnimLocation) = (int(*)(int, int))0x433CD0;
 int (*CarCustomizeManager_GetPartUnlockFilter)() = (int(*)())0x50F0D0;
 int (__thiscall* CarCustomizeManager_GetPaintSetupPrice)(DWORD* CarCustomizeManager) = (int(__thiscall*)(DWORD*))0x521530;

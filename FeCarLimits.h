@@ -122,6 +122,31 @@ struct CombinedPointers
 // car type and spills the 49th onward into player 2, but player 2 is another 48, so anything past
 // 96 was written straight through StockCars[48] into NumStockCars and TunedCars. Same trick as the
 // preset cars: keep our own storage and point at it, so there is no ceiling to overflow.
+// Dealership order by career stage.
+//
+// find_event_that_has_car_as_a_reward gives the event that awards a car; CareerEventData[55] is
+// the stage that event belongs to, which is the field BuildUnlockedCareerCarList compares against
+// the player's current stage. A car no event awards has no stage and goes last.
+//
+// This only sorts the pointer list the browser walks. CarTypeInfo keeps its indices, every
+// per-car table stays keyed the same way, and the save stores cars by name hash, which is why
+// this is safe where reordering CarTypeInfo is not.
+int StockCarStage(FEStockCar* car)
+{
+	if (!car || !car->unk2) return 0x7FFFFFFF; // unassigned slot, park it at the end
+
+	char const* Name = GetCarTypeName(car->Type);
+	if (!Name || !Name[0]) return -1;
+
+	DWORD* Event = find_event_that_has_car_as_a_reward(bStringHash(Name));
+
+	// No event awards it, so it is available from the start. That covers the starter cars and
+	// any add-on nothing in the career unlocks, and both belong at the top of the list.
+	if (!Event) return -1;
+
+	return (int)Event[55];
+}
+
 std::vector<FEStockCar> ExtraStockCars;
 
 // Replaces the fixed CombinedCarPointers[182]. Order still matters, GetCarFiltered walks it to
@@ -139,10 +164,25 @@ void InitCombinePointers()
 	AllCarPointers.clear();
 	AllCarPointers.reserve(182 + ExtraStockCars.size());
 
-	for (int i = 0; i < 48; i++) AllCarPointers.push_back(FEPlayerCarDB_Player1->pStockCars[i]);
-	for (int i = 0; i < 48; i++) AllCarPointers.push_back(FEPlayerCarDB_Player2->pStockCars[i]);
+	// Whole stock section in one go so the sort covers the game's own 48 as well as ours. Stable,
+	// so cars sharing a stage keep the order CarTypeInfo lists them in.
+	std::vector<FEStockCar*> Stock;
+	Stock.reserve(96 + ExtraStockCars.size());
 
-	for (size_t i = 0; i < ExtraStockCars.size(); i++) AllCarPointers.push_back(&ExtraStockCars[i]);
+	for (int i = 0; i < 48; i++) Stock.push_back(FEPlayerCarDB_Player1->pStockCars[i]);
+	for (int i = 0; i < 48; i++) Stock.push_back(FEPlayerCarDB_Player2->pStockCars[i]);
+
+	for (size_t i = 0; i < ExtraStockCars.size(); i++) Stock.push_back(&ExtraStockCars[i]);
+
+	if (SortStockCarsByStage)
+	{
+		std::stable_sort(Stock.begin(), Stock.end(), [](FEStockCar* a, FEStockCar* b)
+		{
+			return StockCarStage(a) < StockCarStage(b);
+		});
+	}
+
+	for (size_t i = 0; i < Stock.size(); i++) AllCarPointers.push_back(Stock[i]);
 
 	for (int i = 0; i < 20; i++) AllCarPointers.push_back(FEPlayerCarDB_Player1->pTunedCars[i]);
 	for (int i = 0; i < 20; i++) AllCarPointers.push_back(FEPlayerCarDB_Player2->pTunedCars[i]);
