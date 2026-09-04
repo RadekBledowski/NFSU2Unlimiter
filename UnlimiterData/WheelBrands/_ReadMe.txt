@@ -1,19 +1,28 @@
-Optional. UnlimiterData\_RimBrands.ini is the brand list; anything here is applied on top of it.
+For additional rim brands only.
 
-One brand per .ini file. A file naming a brand the ini already has replaces that entry and keeps
-its place in the list; a file naming a new one is appended. Only the first section in the file is
-read, whatever it is called, so a block copied straight out of _RimBrands.ini works unchanged:
+UnlimiterData\_RimBrands.ini is the brand list. Whatever it declares is what the game has, so an
+install that renames or drops brands, as UG2NET does, works on its own with nothing in here.
+
+This folder adds to that list. One brand per .ini file:
 
     [RimBrand]
     BrandName = "MYBRAND"
     String = "RIMS_BRAND_MYBRAND"
     Texture = "DECAL_ICON_MYBRAND"
-    AvailableForRegularCars = 1
-    AvailableForSUVs = 0
+    Car = 1
+    Suv = 0
 
-Order among appended brands is filename order. Two reserved names: _Custom.ini replaces the
-car-specific brand at index 0, and _Settings.ini can override RemoveRimSizeRestrictions.
+A file naming a brand _RimBrands.ini already declares replaces that entry instead of adding a
+second one. Only the first section is read, whatever it is called, so a block copied straight out
+of _RimBrands.ini works unchanged. Car and Suv can also be written as AvailableForRegularCars and
+AvailableForSUVs; leaving one out means no.
 
-BrandName is matched against the BRAND_NAME attribute on the rim parts, so it has to be exactly
-what the parts say. Note that brand lists differ between installs: UG2NET calls one brand
-STREETSPIN where vanilla calls it DAVIN.
+The finished list is sorted alphabetically by BrandName, with the car-specific brand kept first,
+so a brand added here lands on its own letter rather than at the end.
+
+Two reserved names: _Custom.ini replaces the car-specific brand, _Settings.ini can override
+RemoveRimSizeRestrictions.
+
+Do not put copies of the brands _RimBrands.ini already has in here unless you mean to change them.
+A file for a brand your install does not have adds it, and a brand with no rims and no label shows
+up as an entry with no name and no icon.

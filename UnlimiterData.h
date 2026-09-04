@@ -1361,6 +1361,14 @@ void LoadRimBrands_ApplyCountPatches(size_t VectorSize)
 //
 // If a section uses either short name, both values come from the short pair and a missing one is
 // a no. Otherwise the long names apply with the defaults they always had.
+void SetRimBrandName(RimBrand& Brand, const char* Name)
+{
+	Brand.BrandNameHash = bStringHash((char*)Name);
+
+	strncpy(Brand.BrandName, Name ? Name : "", sizeof(Brand.BrandName) - 1);
+	Brand.BrandName[sizeof(Brand.BrandName) - 1] = 0;
+}
+
 void ReadRimBrandAvailability(mINI::INIStructure& INI, std::string Sec,
 	bool& Regular, bool& SUV, int DefaultRegular, int DefaultSUV)
 {
@@ -1434,7 +1442,7 @@ void MergeRimBrandsFromFolder()
 				}
 				else if (_stricmp(Stem.c_str(), "_Custom") == 0)
 				{
-					CustomBrand.BrandNameHash = mINI_ReadHashS(BrandINI, Sec, "BrandName", "");
+					SetRimBrandName(CustomBrand, mINI_ReadString(BrandINI, Sec, "BrandName", ""));
 					CustomBrand.StringHash = mINI_ReadHashS(BrandINI, Sec, "String", "RIMS_BRAND_CUSTOM");
 					CustomBrand.TextureHash = mINI_ReadHashS(BrandINI, Sec, "Texture", "VISUAL_RIMS_BRAND_CUSTOM");
 					CustomBrand.NoRimSize = mINI_ReadInteger(BrandINI, Sec, "NoRimSize", 1) != 0;
@@ -1451,7 +1459,7 @@ void MergeRimBrandsFromFolder()
 
 			// BrandName is hashed and matched against the BRAND_NAME attribute in Binary.
 			// Keep it plain ASCII - the displayed name comes from String.
-			P.Brand.BrandNameHash = mINI_ReadHashS(BrandINI, Sec, "BrandName", Stem.c_str());
+			SetRimBrandName(P.Brand, mINI_ReadString(BrandINI, Sec, "BrandName", (char*)Stem.c_str()));
 			P.Brand.StringHash = mINI_ReadHashS(BrandINI, Sec, "String", "RIMS_BRAND_STOCK");
 			P.Brand.TextureHash = mINI_ReadHashS(BrandINI, Sec, "Texture", "VISUAL_RIMS_BRAND_STOCK");
 			P.Brand.NoRimSize = mINI_ReadInteger(BrandINI, Sec, "NoRimSize", 0) != 0;
@@ -1534,7 +1542,7 @@ void LoadRimBrands()
 	{
 		sprintf(RimBrandID, "Brand%d", i);
 
-		ARimBrand.BrandNameHash = mINI_ReadHashS(RimBrandsINI, RimBrandID, "BrandName", GetDefaultRimBrandName(i));
+		SetRimBrandName(ARimBrand, mINI_ReadString(RimBrandsINI, RimBrandID, "BrandName", GetDefaultRimBrandName(i)));
 		ARimBrand.StringHash = mINI_ReadHashS(RimBrandsINI, RimBrandID, "String", GetDefaultRimBrandString(i));
 		ARimBrand.TextureHash = mINI_ReadHashS(RimBrandsINI, RimBrandID, "Texture", GetDefaultRimBrandTexture(i));
 		ARimBrand.NoRimSize = mINI_ReadInteger(RimBrandsINI, RimBrandID, "NoRimSize", i ? 0 : 1) != 0;
@@ -1549,6 +1557,17 @@ void LoadRimBrands()
 	RimBrands = std::move(RimBrands_temp); // Replace global list with temp
 
 	MergeRimBrandsFromFolder();
+
+	// Alphabetical, with index 0 left where it is: that one is the car-specific OEM brand and the
+	// game expects it first. Stable, so two brands sharing a name keep their relative order.
+	if (RimBrands.size() > 2)
+	{
+		std::stable_sort(RimBrands.begin() + 1, RimBrands.end(),
+			[](const RimBrand& a, const RimBrand& b)
+		{
+			return _stricmp(a.BrandName, b.BrandName) < 0;
+		});
+	}
 
 	LoadRimBrands_ApplyCountPatches(RimBrands.size());
 }

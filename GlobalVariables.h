@@ -1026,6 +1026,7 @@ typedef struct
 	bool HideBrandName;
 	bool AvailableForRegularCars;
 	bool AvailableForSUVs;
+	char BrandName[32]; // kept as text so the list can be sorted by it
 } RimBrand;
 
 std::vector<RimBrand> RimBrands;

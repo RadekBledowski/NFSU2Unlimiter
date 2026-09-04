@@ -10,6 +10,7 @@ using namespace std;
 int CarCount, ReplacementCar, CarArraySize, CarPartCount, CarPartPartsTableSize, TrafficCarCount, TheCounter;
 BYTE CarCountByte; // CarCount clamped to a byte, assigned in DoUnlimiterStuffCodeCave
 bool PresetCarsInCustomize, PresetCarsInQuickRace, UnlockSponsorCarsWithoutCheats;
+bool CopCarsCategory, TrafficCarsCategory, ShowCarNamesEverywhere;
 
 bool AllNewCarsInitiallyUnlocked, AllNewCarsCanBeDrivenByAI, DisappearingWheelsFix, ExpandMemoryPools, AddOnOpponentsPartsFix, WorldCrashFixes, EnableFNGFixes, CabinNeonFix, RaceEngageDialogFix, RandomNameHook, ExtendFeCarLimits, DisableTextureReplacement, DisableLightFlareColors, ExportCameraInfoIni, StreamingTrafficCarManagerFix;
 
@@ -110,6 +111,9 @@ int Init()
 	PresetCarsInCustomize = mINI_ReadInteger(Settings, "SponsorCars", "EnableInCustomize", 0) != 0;
 	PresetCarsInQuickRace = mINI_ReadInteger(Settings, "SponsorCars", "EnableInQuickRace", 0) != 0;
 	UnlockSponsorCarsWithoutCheats = mINI_ReadInteger(Settings, "SponsorCars", "UnlockWithoutCheats", 0) != 0;
+	CopCarsCategory = mINI_ReadInteger(Settings, "CarCategories", "CopCars", 0) != 0;
+	TrafficCarsCategory = mINI_ReadInteger(Settings, "CarCategories", "TrafficCars", 0) != 0;
+	ShowCarNamesEverywhere = mINI_ReadInteger(Settings, "CarCategories", "ShowCarNames", 0) != 0;
 
 	// Debug
 	DisableTextureReplacement = mINI_ReadInteger(Settings, "Debug", "DisableTextureReplacement", 0) != 0;
