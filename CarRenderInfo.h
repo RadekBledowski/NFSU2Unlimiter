@@ -302,7 +302,10 @@ void __fastcall CarRenderInfo_UpdateWheelYRenderOffset(DWORD* CarRenderInfo, voi
 		// Check our custom attributes for track width
 		FrontTireOffset = 0;
 		RearTireOffset = 0;
-		if (WideBodyPart && (*((BYTE*)RideInfo + 2104 + 6) == 1)) // check has WIDE_BODY and its visibility
+
+		bool HasWideBodyOffset = WideBodyPart && (*((BYTE*)RideInfo + 2104 + 6) == 1);
+
+		if (HasWideBodyOffset) // check has WIDE_BODY and its visibility
 		{
 			AttrVal = CarPart_GetAppliedAttributeUParam(WideBodyPart, CT_bStringHash("FRONT_TIRE_OFFSET"), 0);
 			FrontTireOffset = *(float*)&AttrVal;
@@ -310,15 +313,26 @@ void __fastcall CarRenderInfo_UpdateWheelYRenderOffset(DWORD* CarRenderInfo, voi
 			RearTireOffset = *(float*)&AttrVal;
 		}
 		
-		if (FenderPart && (*((BYTE*)RideInfo + 2104 + 23) == 1)) // check has FENDER and its visibility
+		// v3 took the tire offset from the widebody OR from the fender and quarter, assigning it.
+		// v4 dropped the else and made the fender and quarter add on top, so with both fitted the
+		// wheel moves twice as far out while the brake stays on its own marker. That is the one
+		// functional difference between the two versions in this whole function, so it is a
+		// setting rather than a guess: 1 keeps v4's behaviour, 0 restores v3's.
+		bool TakeBodyOffsets = AccumulateTireOffsets || !HasWideBodyOffset;
+
+		if (TakeBodyOffsets && FenderPart && (*((BYTE*)RideInfo + 2104 + 23) == 1)) // FENDER and its visibility
 		{
 			AttrVal = CarPart_GetAppliedAttributeUParam(FenderPart, CT_bStringHash("FRONT_TIRE_OFFSET"), 0);
-			FrontTireOffset += *(float*)&AttrVal;
+
+			if (AccumulateTireOffsets) FrontTireOffset += *(float*)&AttrVal;
+			else FrontTireOffset = *(float*)&AttrVal;
 		}
-		if (QuarterPart && (*((BYTE*)RideInfo + 2104 + 24) == 1)) // check has QUARTER and its visibility
+		if (TakeBodyOffsets && QuarterPart && (*((BYTE*)RideInfo + 2104 + 24) == 1)) // QUARTER and its visibility
 		{
 			AttrVal = CarPart_GetAppliedAttributeUParam(QuarterPart, CT_bStringHash("REAR_TIRE_OFFSET"), 0);
-			RearTireOffset += *(float*)&AttrVal;
+
+			if (AccumulateTireOffsets) RearTireOffset += *(float*)&AttrVal;
+			else RearTireOffset = *(float*)&AttrVal;
 		}
 		
 

@@ -71,6 +71,32 @@ DWORD* FindPartWithLevel(int CarType, unsigned int slot_id, int upgrade_level); 
 // A slot holds a CarPart pointer, but on a RideInfo the game has not finished filling in it can
 // hold whatever was there before. A cop car preview handed this a slot containing 0x40800000,
 // which is the float 4.0, and reading byte 5 of it faulted at 0x40800005.
+// A slot offered as an attachment holds a part the player picked, so the code that fills it from
+// somewhere else has to leave it alone. HOOD_UNDER and TRUNK_UNDER are written from the hood's and
+// trunk's HOODUNDER attribute, and the four door slots from the widebody block, on every rebuild.
+// That is why the parts listed and could be chosen but the car never changed: the choice was
+// overwritten a moment later.
+bool IsAttachmentDrivenSlot(int CarType, int Slot)
+{
+    if (CarType < 0 || CarType >= CarCount) return false;
+
+    static const int Slots[6] =
+    {
+        CAR_SLOT_ID::DOOR_PANEL_LEFT, CAR_SLOT_ID::DOOR_PANEL_RIGHT,
+        CAR_SLOT_ID::DOOR_SILL_LEFT,  CAR_SLOT_ID::DOOR_SILL_RIGHT,
+        CAR_SLOT_ID::HOOD_UNDER,      CAR_SLOT_ID::TRUNK_UNDER,
+    };
+
+    BodyShopSection& B = CarConfigs[CarType].BodyShop;
+
+    bool Enabled[6] = { B.Attachment5, B.Attachment6, B.Attachment7, B.Attachment8, B.Attachment9, B.Attachment10 };
+
+    for (int i = 0; i < 6; i++)
+        if (Slots[i] == Slot) return B.Attachments > 5 + i && Enabled[i];
+
+    return false;
+}
+
 bool IsPlausiblePartPointer(DWORD Value)
 {
     return Value >= 0x00010000 && Value <= 0xC0000000 && !(Value & 3);
@@ -221,10 +247,15 @@ void __fastcall RideInfo_UpdatePartsEnabled(DWORD* RideInfo, void* EDX_Unused)
             if (HoodPart)
             {
                 HoodUnderPartHash = CarPart_GetAppliedAttributeUParam(HoodPart, CT_bStringHash("HOODUNDER"), 0);
-                if (HoodUnderPartHash)
-                    RideInfo[356 + 25] = (DWORD)CarPartDatabase_NewGetCarPart((DWORD*)_CarPartDB, CarType, 25, HoodUnderPartHash, 0, -1); // HOOD_UNDER
-                else
-                    RideInfo[356 + 25] = (DWORD)CarPartDatabase_NewGetCarPart((DWORD*)_CarPartDB, CarType, 25, 0, 0, -1);
+
+                // One guard around the pair: putting it inside would rebind the else
+                if (!IsAttachmentDrivenSlot(CarType, CAR_SLOT_ID::HOOD_UNDER))
+                {
+                    if (HoodUnderPartHash)
+                        RideInfo[356 + 25] = (DWORD)CarPartDatabase_NewGetCarPart((DWORD*)_CarPartDB, CarType, 25, HoodUnderPartHash, 0, -1); // HOOD_UNDER
+                    else
+                        RideInfo[356 + 25] = (DWORD)CarPartDatabase_NewGetCarPart((DWORD*)_CarPartDB, CarType, 25, 0, 0, -1);
+                }
 
                 // Show engine if our custom attribute is present
                 ShowEngineThruHood = CarPart_GetAppliedAttributeUParam(HoodPart, CT_bStringHash("SHOWENGINE"), 0);
@@ -280,10 +311,13 @@ void __fastcall RideInfo_UpdatePartsEnabled(DWORD* RideInfo, void* EDX_Unused)
             if (TrunkPart)
             {
                 TrunkUnderPartHash = CarPart_GetAppliedAttributeUParam(TrunkPart, CT_bStringHash("TRUNKUNDER"), 0);
-                if (TrunkUnderPartHash)
-                    RideInfo[356 + 26] = (DWORD)CarPartDatabase_NewGetCarPart((DWORD*)_CarPartDB, CarType, 26, TrunkUnderPartHash, 0, -1); // HOOD_UNDER
-                else
-                    RideInfo[356 + 26] = (DWORD)CarPartDatabase_NewGetCarPart((DWORD*)_CarPartDB, CarType, 26, 0, 0, -1);
+                if (!IsAttachmentDrivenSlot(CarType, CAR_SLOT_ID::TRUNK_UNDER))
+                {
+                    if (TrunkUnderPartHash)
+                        RideInfo[356 + 26] = (DWORD)CarPartDatabase_NewGetCarPart((DWORD*)_CarPartDB, CarType, 26, TrunkUnderPartHash, 0, -1); // TRUNK_UNDER
+                    else
+                        RideInfo[356 + 26] = (DWORD)CarPartDatabase_NewGetCarPart((DWORD*)_CarPartDB, CarType, 26, 0, 0, -1);
+                }
 
                 // Show engine if our custom attribute is present
                 ShowAudioThruTrunk = CarPart_GetAppliedAttributeUParam(TrunkPart, CT_bStringHash("SHOWTRUNK"), 0);
@@ -437,13 +471,17 @@ void __fastcall RideInfo_UpdatePartsEnabled(DWORD* RideInfo, void* EDX_Unused)
                 RightDoorHash = bStringHash2("RIGHT", DoorNamePartialHash);
                 RideInfo[356 + 18] = (DWORD)CarPartDatabase_NewGetCarPart((DWORD*)_CarPartDB, CarType, 18, RightDoorHash, 0, -1);
                 LeftDoorPanelHash = bStringHash2("PANEL_LEFT", DoorNamePartialHash);
-                RideInfo[356 + 19] = (DWORD)CarPartDatabase_NewGetCarPart((DWORD*)_CarPartDB, CarType, 19, LeftDoorPanelHash, 0, -1);
+                if (!IsAttachmentDrivenSlot(CarType, 19))
+                    RideInfo[356 + 19] = (DWORD)CarPartDatabase_NewGetCarPart((DWORD*)_CarPartDB, CarType, 19, LeftDoorPanelHash, 0, -1);
                 RightDoorPanelHash = bStringHash2("PANEL_RIGHT", DoorNamePartialHash);
-                RideInfo[356 + 20] = (DWORD)CarPartDatabase_NewGetCarPart((DWORD*)_CarPartDB, CarType, 20, RightDoorPanelHash, 0, -1);
+                if (!IsAttachmentDrivenSlot(CarType, 20))
+                    RideInfo[356 + 20] = (DWORD)CarPartDatabase_NewGetCarPart((DWORD*)_CarPartDB, CarType, 20, RightDoorPanelHash, 0, -1);
                 LeftDoorSillHash = bStringHash2("SILL_LEFT", DoorNamePartialHash);
-                RideInfo[356 + 21] = (DWORD)CarPartDatabase_NewGetCarPart((DWORD*)_CarPartDB, CarType, 21, LeftDoorSillHash, 0, -1);
+                if (!IsAttachmentDrivenSlot(CarType, 21))
+                    RideInfo[356 + 21] = (DWORD)CarPartDatabase_NewGetCarPart((DWORD*)_CarPartDB, CarType, 21, LeftDoorSillHash, 0, -1);
                 RightDoorSillHash = bStringHash2("SILL_RIGHT", DoorNamePartialHash);
-                RideInfo[356 + 22] = (DWORD)CarPartDatabase_NewGetCarPart((DWORD*)_CarPartDB, CarType, 22, RightDoorSillHash, 0, -1);
+                if (!IsAttachmentDrivenSlot(CarType, 22))
+                    RideInfo[356 + 22] = (DWORD)CarPartDatabase_NewGetCarPart((DWORD*)_CarPartDB, CarType, 22, RightDoorSillHash, 0, -1);
 
                 *((BYTE*)RideInfo + 2104 + 1) = 0; // FRONT_BUMPER visibility
                 *((BYTE*)RideInfo + 2104 + 2) = 0; // REAR_BUMPER visibility
@@ -509,10 +547,14 @@ void __fastcall RideInfo_UpdatePartsEnabled(DWORD* RideInfo, void* EDX_Unused)
             {
                 RideInfo[356 + 17] = (DWORD)CarPartDatabase_NewGetCarPart((DWORD*)_CarPartDB, CarType, 17, 0, 0, -1);
                 RideInfo[356 + 18] = (DWORD)CarPartDatabase_NewGetCarPart((DWORD*)_CarPartDB, CarType, 18, 0, 0, -1);
-                RideInfo[356 + 19] = (DWORD)CarPartDatabase_NewGetCarPart((DWORD*)_CarPartDB, CarType, 19, 0, 0, -1);
-                RideInfo[356 + 20] = (DWORD)CarPartDatabase_NewGetCarPart((DWORD*)_CarPartDB, CarType, 20, 0, 0, -1);
-                RideInfo[356 + 21] = (DWORD)CarPartDatabase_NewGetCarPart((DWORD*)_CarPartDB, CarType, 21, 0, 0, -1);
-                RideInfo[356 + 22] = (DWORD)CarPartDatabase_NewGetCarPart((DWORD*)_CarPartDB, CarType, 22, 0, 0, -1);
+                if (!IsAttachmentDrivenSlot(CarType, 19))
+                    RideInfo[356 + 19] = (DWORD)CarPartDatabase_NewGetCarPart((DWORD*)_CarPartDB, CarType, 19, 0, 0, -1);
+                if (!IsAttachmentDrivenSlot(CarType, 20))
+                    RideInfo[356 + 20] = (DWORD)CarPartDatabase_NewGetCarPart((DWORD*)_CarPartDB, CarType, 20, 0, 0, -1);
+                if (!IsAttachmentDrivenSlot(CarType, 21))
+                    RideInfo[356 + 21] = (DWORD)CarPartDatabase_NewGetCarPart((DWORD*)_CarPartDB, CarType, 21, 0, 0, -1);
+                if (!IsAttachmentDrivenSlot(CarType, 22))
+                    RideInfo[356 + 22] = (DWORD)CarPartDatabase_NewGetCarPart((DWORD*)_CarPartDB, CarType, 22, 0, 0, -1);
 
                 *((BYTE*)RideInfo + 2104 + 1) = 1; // FRONT_BUMPER visibility
                 *((BYTE*)RideInfo + 2104 + 2) = 1; // REAR_BUMPER visibility

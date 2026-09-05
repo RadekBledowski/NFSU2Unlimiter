@@ -123,6 +123,7 @@ int Init()
 	PartLinkTrace = mINI_ReadInteger(Settings, "Debug", "PartLinkTrace", 0) != 0;
 	StaticCameraGenericFallback = mINI_ReadInteger(Settings, "Misc", "StaticCameraGenericFallback", 1) != 0;
 	SortStockCarsByStage = mINI_ReadInteger(Settings, "Misc", "SortStockCarsByStage", 0) != 0;
+	AccumulateTireOffsets = mINI_ReadInteger(Settings, "Fixes", "AccumulateTireOffsets", 1) != 0;
 	EnableReleasePrintf = mINI_ReadInteger(Settings, "Debug", "EnableReleasePrintf", EnableReleasePrintf) != 0;
 
 	// Count Cars Automatically
