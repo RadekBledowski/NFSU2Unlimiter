@@ -343,6 +343,11 @@ struct MainSection
 	bool SyncVisualPartsWithPhysics;
 	bool SyncBrakesWithPhysics;
 	bool MirrorBrakes;
+	// Name hash of the car this one is a trim of, 0 when it is a car in its own right. A trim is
+	// a Universal CarTypeInfo, so it gets its own <name>.ini out of the loop that reads every car
+	// type's ini, and anything a car ini can say a trim can say too.
+	// Never inherited from _General.ini: a trim has to say so itself.
+	DWORD TrimOf;
 	bool AlwaysShowHoodUnder;
 	bool AlwaysShowTrunkUnder;
 	bool AlwaysShowDoorPanels;

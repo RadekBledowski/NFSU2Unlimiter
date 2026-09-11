@@ -89,6 +89,9 @@ DWORD* (__thiscall* CarPart_GetNextAppliedAttribute)(DWORD* CarPart, unsigned in
 bool (*IsBrowsingBrakePaint)() = (bool(*)())0x50F1D0;
 //void (__thiscall* RideInfo_UpdatePartsEnabled)(DWORD* CarCustomizeManager) = (void (__thiscall*)(DWORD*))0x61BCD0;
 void(__thiscall* RideInfo_SyncVisualPartsWithPhysics)(DWORD* CarCustomizeManager, bool perf, bool random) = (void(__thiscall*)(DWORD*, bool, bool))0x6399D0;
+// Syncs the visual parts, then hands the RidePhysicsInfo at RideInfo+0x10 to its own
+// RebuildPhysicsInfo. GarageCarLoader::LoadRideInfo calls it as (0, true, true, true).
+void(__thiscall* RideInfo_RebuildPhysicsInfo)(DWORD* RideInfo, int PhysicsType, bool a3, bool a4, bool a5) = (void(__thiscall*)(DWORD*, int, bool, bool, bool))0x639CE0;
 int (*CarAnimManager_GetLocationState)(int CarAnimManager, int CarAnimLocation) = (int(*)(int, int))0x433CD0;
 int (*CarCustomizeManager_GetPartUnlockFilter)() = (int(*)())0x50F0D0;
 int (__thiscall* CarCustomizeManager_GetPaintSetupPrice)(DWORD* CarCustomizeManager) = (int(__thiscall*)(DWORD*))0x521530;

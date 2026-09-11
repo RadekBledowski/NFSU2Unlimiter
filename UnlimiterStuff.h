@@ -30,6 +30,7 @@ char AttachmentNameBuf[64];
 #include "CarPartDatabase.h"
 #include "CarRenderInfo.h"
 #include "RideInfo.h"
+#include "TrimSwap.h"
 #include "RidePhysicsInfo.h"
 #include "CarLoader.h"
 #include "CarCustomizeManager.h"
@@ -101,6 +102,7 @@ int Init()
 
 	// Misc
 	ExpandMemoryPools = mINI_ReadInteger(Settings, "Misc", "ExpandMemoryPools", 1) != 0;
+	TrimSwapKey = mINI_ReadInteger(Settings, "Misc", "TrimSwapKey", 0);
 	AddOnOpponentsPartsFix = mINI_ReadInteger(Settings, "Misc", "ForceStockPartsOnAddOnOpponents", 0) != 0;
 	ExtendFeCarLimits = mINI_ReadInteger(Settings, "Misc", "ExtendFeCarLimits", 0) != 0;// Doubles the amount of stock and tuned cars a player can have in a profile.
 	StaticCameraGenericFallback = mINI_ReadInteger(Settings, "Misc", "StaticCameraGenericFallback", 1) != 0;
@@ -124,6 +126,7 @@ int Init()
 	ForceLightFlaresOn = mINI_ReadInteger(Settings, "Debug", "ForceLightFlaresOn", 0);
 	ExportCameraInfoIni = mINI_ReadInteger(Settings, "Debug", "ExportCameraInfo", 0) != 0;
 	PartLinkTrace = mINI_ReadInteger(Settings, "Debug", "PartLinkTrace", 0) != 0;
+	TrimTrace = mINI_ReadInteger(Settings, "Debug", "TrimTrace", 0) != 0;
 	EnableReleasePrintf = mINI_ReadInteger(Settings, "Debug", "EnableReleasePrintf", EnableReleasePrintf) != 0;
 
 	// Count Cars Automatically
@@ -166,6 +169,8 @@ int Init()
 
 	// Fix logos and give traffic cars their own prefix
 	injector::MakeJMP(0x511E60, GetCarTypeLogoHash, true); // 10 references
+
+	InitTrimSwap();
 
 	// Extra Customization
 	// Body shop

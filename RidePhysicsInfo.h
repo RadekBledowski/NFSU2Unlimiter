@@ -1,6 +1,10 @@
 #include "stdio.h"
 #include "InGameFunctions.h"
 
+// TrimSwap.h
+DWORD* Trim_CarTypeInfoForRide(DWORD* Ride);
+void Trim_PollKey();
+
 void __fastcall RidePhysicsInfo_RebuildPhysicsInfo(float* RidePhysicsInfo, void* EDX_Unused, int PhysicsType, bool ShouldComputeMiscStats, float a4)
 {
     DWORD* CarTypeInfo; // edi
@@ -22,7 +26,13 @@ void __fastcall RidePhysicsInfo_RebuildPhysicsInfo(float* RidePhysicsInfo, void*
     {
         CarTypeInfo = GetCarTypeInfo(*(DWORD*)RidePhysicsInfo);
 
-        _ccpi = (float*)(CarTypeInfo + 68);// UnknownVectorVal + WheelPos...
+        // A trim keeps the physics of its own CarTypeInfo. Only the 480 float block is taken
+        // from it: UsageType below still has to be the car's own, because a trim is Universal
+        // and the Universal branch skips the whole car class calculation.
+        DWORD* PhysicsCarTypeInfo = Trim_CarTypeInfoForRide((DWORD*)RidePhysicsInfo - 4);
+        if (!PhysicsCarTypeInfo) PhysicsCarTypeInfo = CarTypeInfo;
+
+        _ccpi = (float*)(PhysicsCarTypeInfo + 68);// UnknownVectorVal + WheelPos...
         memcpy(CompleatCarPhysicsInfo, _ccpi, 480 * sizeof(float)); // Create a copy of physics values
 
         // get wheel offsets from rideinfo + custom attr
@@ -130,6 +140,12 @@ void __fastcall RidePhysicsInfo_RebuildPhysicsInfo(float* RidePhysicsInfo, void*
 
 float __fastcall RidePhysicsInfo_GetCamberPercent(DWORD* RidePhysicsInfo, void* EDX_Unused)
 {
+    // Called from CarRenderInfo::Render and RenderFast, so once per car per frame. Two earlier
+    // placements ran never: CarSelectFNGObject::UpdateUI sits behind an early return, and the
+    // CarRenderInfo hook at 0x639091 is the constructor. Careful, this is a RidePhysicsInfo,
+    // NOT a RideInfo. Both start with the car type, so a mix-up compiles cleanly.
+    Trim_PollKey();
+
     int CarTypeID = *RidePhysicsInfo;
     float result = .0f;
 

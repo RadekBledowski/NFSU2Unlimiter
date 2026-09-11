@@ -169,6 +169,7 @@ copy "$(TargetDir)*.pdb" "G:\Oyunlar\Need for Speed Underground 2 Dirty\scripts"
     <ClInclude Include="stdafx.h" />
     <ClInclude Include="StreamingTrafficCarManager.h" />
     <ClInclude Include="Tachometer.h" />
+    <ClInclude Include="TrimSwap.h" />
     <ClInclude Include="targetver.h" />
     <ClInclude Include="UnlimiterData.h" />
     <ClInclude Include="UnlimiterStuff.h" />

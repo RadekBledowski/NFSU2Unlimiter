@@ -4,16 +4,26 @@
 #include "InGameFunctions.h"
 #include "Helpers.h"
 
+// TrimSwap.h
+DWORD* Trim_CarTypeInfoForCarType(int CarType);
+
 DWORD GetCarTypeLogoHash(int type, bool manu)
 {
 	DWORD result = 0;
 	int BuildRegion = GetBuildRegion();
-	char const *CarTypeName = (char const*)CarConfigs[type].CarTypeInfo;
+
+	// Both labels are built from a name, so a trim only has to supply a different CarTypeInfo to
+	// get different badges. With no trim on the car this is the car's own and the regional cases
+	// below (CORSA -> OPEL, MIATA -> MX5) still see the name they expect.
+	DWORD* Source = Trim_CarTypeInfoForCarType(type);
+	if (!Source) Source = CarConfigs[type].CarTypeInfo;
+
+	char const *CarTypeName = (char const*)Source;
 	DWORD CarTypeNameHash = bStringHash(CarTypeName);
 
 	if (manu)
 	{
-		char const* CarManuName = CarTypeInfo_GetManufacturerName(CarConfigs[type].CarTypeInfo);
+		char const* CarManuName = CarTypeInfo_GetManufacturerName(Source);
 		result = FEngHashString("CARSELECT_MANUFACTURER_%s", CarManuName);
 		if (IsTraffic(type)) return FEngHashString("CARSELECT_MANUFACTURER_TRAFFIC_%s", CarManuName);
 

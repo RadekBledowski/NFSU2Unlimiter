@@ -4,6 +4,8 @@
 #include "stdio.h"
 #include "InGameFunctions.h"
 #include "GlobalVariables.h"
+
+int Trim_EffectiveCarType(int CarType); // TrimSwap.h
 #include "FeCarLimits.h"
 
 // ExtendFeCarLimits reimplements FEPlayerCarDB::GetCarFiltered (0x5162D0),
@@ -903,7 +905,9 @@ void __stdcall UIQRCarSelect_PostRefreshHeader(DWORD* UIQRCarSelect)
 
 			if (bStringHash(Buf) != Hash) continue;
 
-			FEPrintf("UI_QRCarSelect.fng", hashof_racemode, "%s", TypeName);
+			// The name follows the trim, the same way the badges above it do. Off a trim, and for the
+			// entries that are not the car being previewed, this is the car's own name.
+			FEPrintf("UI_QRCarSelect.fng", hashof_racemode, "%s", GetCarTypeName(Trim_EffectiveCarType(Type)));
 			break;
 		}
 	}

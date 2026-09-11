@@ -193,6 +193,7 @@ int LoaderCarInfo_Hook(bChunk* chunk)
 
 			// Make them available as opponents
 			LoadCarConfigs();
+			Trim_BuildTables(); // needs every TrimOf, so it has to follow LoadCarConfigs
 			FillCarPickerArrays();
 
 			// load configs into UnlimiterData structs

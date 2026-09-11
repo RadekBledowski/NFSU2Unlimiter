@@ -31,6 +31,7 @@ void LoadCarConfigs()
 	DefaultCarConfig.Main.SyncVisualPartsWithPhysics = mINI_ReadInteger(GeneralINI, "Main", "SyncVisualPartsWithPhysics", 1);
 	DefaultCarConfig.Main.SyncBrakesWithPhysics = mINI_ReadInteger(GeneralINI, "Main", "SyncBrakesWithPhysics", DefaultCarConfig.Main.SyncVisualPartsWithPhysics) != 0;
 	DefaultCarConfig.Main.MirrorBrakes = mINI_ReadInteger(GeneralINI, "Main", "MirrorBrakes", 1) != 0;
+	DefaultCarConfig.Main.TrimOf = 0; // never inherited: a trim says so in its own ini
 	DefaultCarConfig.Main.AlwaysShowHoodUnder = mINI_ReadInteger(GeneralINI, "Main", "AlwaysShowHoodUnder", 0) != 0;
 	DefaultCarConfig.Main.AlwaysShowTrunkUnder = mINI_ReadInteger(GeneralINI, "Main", "AlwaysShowTrunkUnder", 0) != 0;
 	DefaultCarConfig.Main.AlwaysShowDoorPanels = mINI_ReadInteger(GeneralINI, "Main", "AlwaysShowDoorPanels", 0) != 0;
@@ -629,6 +630,10 @@ void LoadCarConfigs()
 		ACarConfig.Main.SyncBrakesWithPhysics = mINI_ReadInteger(CarINI, "Main", "SyncBrakesWithPhysics",
 			mINI_ReadInteger(CarINI, "Main", "SyncVisualPartsWithPhysics", DefaultCarConfig.Main.SyncBrakesWithPhysics)) != 0;
 		ACarConfig.Main.MirrorBrakes = mINI_ReadInteger(CarINI, "Main", "MirrorBrakes", DefaultCarConfig.Main.MirrorBrakes) != 0;
+		// Read as a string first: mINI_ReadHash hashes whatever it finds, and an empty TrimOf left
+		// behind by someone copying _General.ini would hash to 0xFFFFFFFF rather than to nothing.
+		char* TrimOfName = mINI_ReadString(CarINI, "Main", "TrimOf", "");
+		ACarConfig.Main.TrimOf = (TrimOfName && TrimOfName[0]) ? bStringHash(TrimOfName) : 0;
 		ACarConfig.Main.AlwaysShowHoodUnder = mINI_ReadInteger(CarINI, "Main", "AlwaysShowHoodUnder", DefaultCarConfig.Main.AlwaysShowHoodUnder) != 0;
 		ACarConfig.Main.AlwaysShowTrunkUnder = mINI_ReadInteger(CarINI, "Main", "AlwaysShowTrunkUnder", DefaultCarConfig.Main.AlwaysShowTrunkUnder) != 0;
 		ACarConfig.Main.AlwaysShowDoorPanels = mINI_ReadInteger(CarINI, "Main", "AlwaysShowDoorPanels", DefaultCarConfig.Main.AlwaysShowDoorPanels) != 0;
