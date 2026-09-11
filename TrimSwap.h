@@ -10,7 +10,7 @@
 //
 // One car type, several factory versions. SUPRA and TURBOSUPRA are the same car slot as far as
 // the car lot is concerned, but the badges, the name art, the base paint and the physics all come
-// from whichever version is selected.
+// from whichever version is fitted.
 //
 // A trim is a Universal CarTypeInfo.
 //
@@ -72,6 +72,19 @@ void TrimTraceLine(const char* fmt, ...)
 	va_end(args);
 
 	fclose(f);
+}
+
+// This reads hundreds of bytes past whatever it is given, so a small integer means a caller
+// passed something that is not a pointer at all. Same shape as PartLink_ValidRideInfo.
+bool Trim_ValidPtr(void* p)
+{
+	uintptr_t v = (uintptr_t)p;
+	return v >= 0x00010000 && v <= 0xC0000000 && !(v & 3);
+}
+
+bool Trim_ValidRide(DWORD* Ride)
+{
+	return Trim_ValidPtr(Ride);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -141,6 +154,14 @@ void Trim_BuildTables()
 		if (CarTypeInfo_UsageType(CarConfigs[i].CarTypeInfo) == 0)
 			TrimTraceLine("  warning: %s is a trim but its UsageType is Racer, set it to Universal\n",
 				GetCarTypeName(i));
+
+		// PartLink is what HIDESLOT and SWAPSLOT on a trim part run on, and it is off unless the
+		// PARENT car's own ini turns it on. A trim part carrying link attributes with no
+		// <PARENT>.ini next to it looks broken for no visible reason, so say so here.
+		if (!CarConfigs[TrimParents[i]].PartLinking.Enabled)
+			TrimTraceLine("  note: %s has [PartLink] Enabled = 0, so HIDESLOT and SWAPSLOT on its"
+				" trim parts do nothing. Add UnlimiterData\\%s.ini with [PartLink] Enabled = 1.\n",
+				GetCarTypeName(TrimParents[i]), GetCarTypeName(TrimParents[i]));
 	}
 }
 
@@ -205,12 +226,6 @@ DWORD* Trim_PartFor(int CarType, int TrimType)
 	return nullptr;
 }
 
-bool Trim_ValidRide(DWORD* Ride)
-{
-	uintptr_t v = (uintptr_t)Ride;
-	return v >= 0x00010000 && v <= 0xC0000000 && !(v & 3);
-}
-
 // Which trim this car is wearing, by matching the part in RIGHT_SIDE_MIRROR against each trim.
 int Trim_OnRide(DWORD* Ride)
 {
@@ -231,12 +246,97 @@ int Trim_OnRide(DWORD* Ride)
 }
 
 // ---------------------------------------------------------------------------------------------
-// Redirection
+// Which CarTypeInfo the badges come from
 //
-// One place decides which CarTypeInfo a car's identity is read from. Everything a trim changes
-// goes through here, so adding a field to the list is a matter of pointing one more consumer at
-// it rather than inventing a new mechanism each time.
+// Every screen that draws a car's badges does the same three instructions:
+//
+//     mov eax, [this+58h]      the SelectableCar it is drawing
+//     mov ecx, [eax+918h]      its CarTypeInfo
+//     mov eax, [ecx+840h]      its car type, which is all GetCarTypeLogoHash is given
+//
+// A car type is not enough to find a trim, because two saved cars can be the same car type
+// wearing different trims. Reading the trim off the car viewer's ride answers with whichever car
+// is on screen, which is right for the selected car and wrong for every other one: changing the
+// trim on one saved SUPRA made the next saved SUPRA's badge follow it, while its performance,
+// which is per ride, stayed correct. That mismatch is what gave the cause away.
+//
+// So the screens are wrapped at their call sites and the trim of the car they are about to draw
+// is put where GetCarTypeLogoHash can see it, for exactly the length of that call. Nothing is
+// kept afterwards, which is the whole difference from the captured this pointer that crashed the
+// build before last.
 // ---------------------------------------------------------------------------------------------
+
+DWORD* (__thiscall* SelectableCar_GetRide)(DWORD* SelectableCar) = (DWORD * (__thiscall*)(DWORD*))0x511E00;
+
+bool TrimOverrideActive = false;  // a screen is asking on behalf of one particular car
+int TrimOverrideTrim = -1;        // and that car wears this trim, -1 for none
+
+void Trim_PushOverrideFromRide(DWORD* Ride)
+{
+	TrimOverrideActive = false;
+	TrimOverrideTrim = -1;
+
+	if (!Trim_ValidRide(Ride)) return;
+
+	TrimOverrideTrim = Trim_OnRide(Ride);
+	TrimOverrideActive = true;
+}
+
+// The screens do NOT agree on where the selected car sits, which is worth checking before
+// wrapping one rather than after:
+//
+//   UICareerCarLot::RefreshHeader          SelectableCar at +0x58
+//   UIQRCarSelect::RefreshHeader           SelectableCar at +0x58
+//   sub_4BE440, the customize brand logos  SelectableCar at +0x58
+//   UICareerCribCarSelect::RefreshHeader   SelectableCar at +0x54
+//   sub_4E7F50, the opponent ride screen   a RideInfo* at +0x124, no SelectableCar at all
+void Trim_PushOverrideFromSelectableCar(DWORD* Screen, int Offset)
+{
+	TrimOverrideActive = false;
+	TrimOverrideTrim = -1;
+
+	if (!Trim_ValidPtr(Screen)) return;
+
+	DWORD* Selected = (DWORD*)Screen[Offset / 4];
+	if (!Trim_ValidPtr(Selected)) return;
+
+	Trim_PushOverrideFromRide(SelectableCar_GetRide(Selected));
+}
+
+void Trim_PopOverride()
+{
+	TrimOverrideActive = false;
+	TrimOverrideTrim = -1;
+}
+
+// The car type whose CarTypeInfo the badges and the name art should be read from.
+int Trim_EffectiveCarType(int CarType)
+{
+	if (CarType < 0 || CarType >= CarCount) return CarType;
+
+	// A screen told us which car it is drawing, so that is the answer, trim or no trim. The
+	// parent check keeps a trim from leaking onto a different car that happens to ask inside the
+	// same call.
+	if (TrimOverrideActive)
+	{
+		if (TrimOverrideTrim >= 0 && Trim_ParentOf(TrimOverrideTrim) == CarType) return TrimOverrideTrim;
+
+		return CarType;
+	}
+
+	// Nobody said, so fall back to the car on screen. CarViewer_GetRideInfo(0) at 0x4A7890
+	// returns TopOrFullScreenRide and follows it; gTheRideInfo does NOT, it belongs to the
+	// customize manager and only moves when something is customized.
+	DWORD* Ride = CarViewer_GetRideInfo(0);
+
+	if (Trim_ValidRide(Ride) && *(int*)Ride == CarType)
+	{
+		int Trim = Trim_OnRide(Ride);
+		if (Trim >= 0 && Trim < CarCount) return Trim;
+	}
+
+	return CarType;
+}
 
 DWORD* Trim_CarTypeInfoForRide(DWORD* Ride)
 {
@@ -252,27 +352,6 @@ DWORD* Trim_CarTypeInfoForRide(DWORD* Ride)
 	return CarConfigs[CarType].CarTypeInfo;
 }
 
-// For callers that hold a car type and nothing else, which is most of the front end.
-//
-// CarViewer_GetRideInfo(0) at 0x4A7890 returns TopOrFullScreenRide and follows the car actually
-// on screen. gTheRideInfo does NOT: it reported the same car in every menu and cost a build.
-// The car type is compared so that a screen asking about some other car gets that car's own
-// answer, which is what keeps the regional cases (CORSA -> OPEL, MIATA -> MX5) working.
-int Trim_EffectiveCarType(int CarType)
-{
-	if (CarType < 0 || CarType >= CarCount) return CarType;
-
-	DWORD* Ride = CarViewer_GetRideInfo(0);
-
-	if (Trim_ValidRide(Ride) && *(int*)Ride == CarType)
-	{
-		int Trim = Trim_OnRide(Ride);
-		if (Trim >= 0 && Trim < CarCount) return Trim;
-	}
-
-	return CarType;
-}
-
 DWORD* Trim_CarTypeInfoForCarType(int CarType)
 {
 	if (CarType < 0 || CarType >= CarCount) return nullptr;
@@ -281,136 +360,53 @@ DWORD* Trim_CarTypeInfoForCarType(int CarType)
 }
 
 // ---------------------------------------------------------------------------------------------
-// What follows the trim
+// Wrapping the screens that draw badges
+//
+// All five are thiscall(Screen*) and all five read the selected car from [this+0x58], so one
+// wrapper shape covers them. These are pass through: the screen pointer is used only while the
+// game is inside the call, never stored for later.
 // ---------------------------------------------------------------------------------------------
 
-// Base paint. RideInfo::SetStockParts does exactly this at 0x63709B: read DefaultBasePaint off
-// the CarTypeInfo, ask the part database for the BASE_PAINT part with that name hash, drop it in
-// slot 63. Paint slots are the one case where NewGetCarPart's hash argument IS the name, because
-// for them GetTypesFromSlot returns the paint type and the table entry is the colour name.
-//
-// Only applied when the trim is put on, never on the way off: coming off a trim leaves whatever
-// colour is there rather than repainting the car behind the player's back.
-bool Trim_ApplyBasePaint(DWORD* Ride, int TrimType)
-{
-	if (!Trim_ValidRide(Ride) || TrimType < 0 || TrimType >= CarCount) return false;
+typedef void(__thiscall* RefreshHeaderFn)(DWORD* Screen);
 
-	DWORD Paint = CarTypeInfo_DefaultBasePaint(CarConfigs[TrimType].CarTypeInfo);
-	if (!Paint) return false;
+RefreshHeaderFn GameCarLotRefreshHeader   = (RefreshHeaderFn)0x4AFE00; // UICareerCarLot
+RefreshHeaderFn GameCribRefreshHeader     = (RefreshHeaderFn)0x4B0140; // UICareerCribCarSelect
+RefreshHeaderFn GameQRSelectRefreshHeader = (RefreshHeaderFn)0x4B2310; // UIQRCarSelect
+RefreshHeaderFn GameCustomizeBrands       = (RefreshHeaderFn)0x4BE440; // brand logos in customize
+RefreshHeaderFn GameOtherCarSelect        = (RefreshHeaderFn)0x4E7F50;
 
-	int CarType = *(int*)Ride;
-
-	DWORD* Part = CarPartDatabase_NewGetCarPart((DWORD*)_CarPartDB, CarType, CARSLOTID_BASE_PAINT, Paint, 0, -1);
-
-	if (!Part)
-	{
-		TrimTraceLine("  paint 0x%08X not available on %s\n", (unsigned int)Paint, GetCarTypeName(CarType));
-		return false;
+#define TRIM_WRAP_SELECTABLE(name, target, offset)                \
+	void __fastcall name(DWORD* Screen, void* EDX_Unused)         \
+	{                                                             \
+		Trim_PushOverrideFromSelectableCar(Screen, offset);       \
+		target(Screen);                                           \
+		Trim_PopOverride();                                       \
 	}
 
-	Ride[356 + CARSLOTID_BASE_PAINT] = (DWORD)Part;
+TRIM_WRAP_SELECTABLE(TrimCarLotRefreshHeader,   GameCarLotRefreshHeader,   0x58)
+TRIM_WRAP_SELECTABLE(TrimCribRefreshHeader,     GameCribRefreshHeader,     0x54)
+TRIM_WRAP_SELECTABLE(TrimQRSelectRefreshHeader, GameQRSelectRefreshHeader, 0x58)
+TRIM_WRAP_SELECTABLE(TrimCustomizeBrands,       GameCustomizeBrands,       0x58)
 
-	TrimTraceLine("  paint -> 0x%08X\n", (unsigned int)Paint);
-	return true;
+// The opponent ride screen holds a RideInfo outright, so there is no SelectableCar to ask.
+void __fastcall TrimOtherCarSelect(DWORD* Screen, void* EDX_Unused)
+{
+	Trim_PushOverrideFromRide(Trim_ValidPtr(Screen) ? (DWORD*)Screen[0x124 / 4] : nullptr);
+	GameOtherCarSelect(Screen);
+	Trim_PopOverride();
 }
 
-// ---------------------------------------------------------------------------------------------
-// Persistence
+// GarageMainScreen::SetCarType builds SECONDARY_LOGO_<name> straight off the CarTypeInfo instead
+// of going through GetCarTypeLogoHash, so the garage name art is a second place to redirect. It
+// indexes the array by car type, which means handing it the trim's car type is the whole fix.
 //
-// The save does store the slot. PresetCarSlot::FillWithRide at 0x503950 walks CAR_SLOT_ID 0 to
-// 0xAA and packs every installed part as (word[part+2] << 16) | word[part+0], RIGHT_SIDE_MIRROR
-// included, and FECarConfig::BuildRide unpacks the same range on the way back. So the format was
-// never the problem.
-//
-// What was the problem is which RideInfo the trim went into. CarViewer_GetRideInfo(0) returns
-// TopOrFullScreenRide, one global the viewer reuses for every car it shows, and nothing in it is
-// ever packed into a record. The ride that IS packed is the one the customize manager owns, and
-// the game write-throughs it on every change:
-//
-//     lea ecx, [eax+940h]      the manager's own RideInfo
-//     cmp esi, ecx             only if this is the ride that changed
-//     mov ecx, [eax+2Ch]       the FECarConfig record
-//     add ecx, 18h             its PresetCarSlot
-//     call PresetCarSlot::FillWithRide
-//
-// which is 0x5213AC, the tail of the perf package installer. Same three lines here.
-// ---------------------------------------------------------------------------------------------
+// Its five call sites are hooked rather than its entry, because a hook on the entry that wants to
+// call the original has nowhere left to call: the entry is the hook.
+void(__thiscall* GameGarageMainScreenSetCarType)(DWORD* Screen, int CarType) = (void(__thiscall*)(DWORD*, int))0x4A5EE0;
 
-#define CarCustomizeManager_RideInfo    592     // +0x940, in DWORDs
-#define CarCustomizeManager_CarConfig   11      // +0x2C, in DWORDs
-#define FECarConfig_PresetCarSlot       (0x18 / 4)
-
-void(__thiscall* Trim_PresetCarSlotFillWithRide)(DWORD* PresetCarSlot, DWORD* Ride)
-	= (void(__thiscall*)(DWORD*, DWORD*))0x503950;
-
-// The trim the player last put on each car type, so that picking one in the car lot survives the
-// car being bought. A record is built from a stock ride, never from the car on screen, so without
-// this the trim would be thrown away the moment the car became the player's.
-//
-// Per car type and not per profile. A trim chosen for a car that is then never bought stays
-// remembered until something else is chosen for the same car, which shows up as a car arriving
-// already wearing the trim that was last looked at. That is the intended answer often enough to
-// leave it alone until there is a real ownership test.
-std::vector<int> TrimChosen;
-
-void Trim_Remember(int CarType, int TrimType)
+void __fastcall GarageMainScreen_SetCarType(DWORD* Screen, void* EDX_Unused, int CarType)
 {
-	if (CarType < 0 || CarType >= CarCount) return;
-
-	if ((int)TrimChosen.size() != CarCount) TrimChosen.assign(CarCount, -1);
-
-	TrimChosen[CarType] = TrimType;
-}
-
-int Trim_Remembered(int CarType)
-{
-	if (CarType < 0 || CarType >= (int)TrimChosen.size()) return -1;
-
-	return TrimChosen[CarType];
-}
-
-// Put a trim on a ride. The one place that writes the slot, so nothing else has to know that a
-// trim is a part or which slot it lives in.
-bool Trim_Install(DWORD* Ride, int TrimType)
-{
-	if (!Trim_ValidRide(Ride)) return false;
-
-	int CarType = *(int*)Ride;
-	if (CarType < 0 || CarType >= CarCount) return false;
-
-	DWORD* Part = (TrimType >= 0) ? Trim_PartFor(CarType, TrimType) : nullptr;
-
-	if (TrimType >= 0 && !Part)
-	{
-		TrimTraceLine("%s: no part named %s_%s in RIGHT_SIDE_MIRROR\n",
-			GetCarTypeName(CarType), GetCarTypeName(CarType), GetCarTypeName(TrimType));
-		return false;
-	}
-
-	Ride[356 + CARSLOTID_RIGHT_SIDE_MIRROR] = (DWORD)Part;
-
-	if (TrimType >= 0) Trim_ApplyBasePaint(Ride, TrimType);
-
-	return true;
-}
-
-// The record for a car the player has just come to own is built from a stock ride, never from the
-// car that was on screen in the car lot, so the trim has to be put back before the record is
-// packed. Hooked at the CALL inside FECarConfig::Init rather than at FillWithRide itself, which
-// keeps every other caller of FillWithRide untouched.
-void __fastcall Trim_FillWithRide_NewRecord(DWORD* PresetCarSlot, void* EDX_Unused, DWORD* Ride)
-{
-	if (Trim_ValidRide(Ride))
-	{
-		int CarType = *(int*)Ride;
-		int Wanted = Trim_Remembered(CarType);
-
-		if (Wanted >= 0 && Trim_OnRide(Ride) != Wanted && Trim_Install(Ride, Wanted))
-			TrimTraceLine("new record for %s: trim %s carried over\n",
-				GetCarTypeName(CarType), GetCarTypeName(Wanted));
-	}
-
-	Trim_PresetCarSlotFillWithRide(PresetCarSlot, Ride);
+	GameGarageMainScreenSetCarType(Screen, Trim_EffectiveCarType(CarType));
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -431,55 +427,26 @@ void __fastcall Trim_FillWithRide_NewRecord(DWORD* PresetCarSlot, void* EDX_Unus
 //
 // So a trim is installed exactly the way the Body Shop installs a bumper, and the refresh, the
 // record and the rep rating all come along.
-//
-// An earlier attempt to drive the screen directly, by calling each car screen's RefreshHeader
-// on a captured this pointer, crashed in FEngGetTopLeft at 0x51D13A with a null FEObject the
-// moment the screen it had been captured on was left. Nothing here touches a screen.
 // ---------------------------------------------------------------------------------------------
 
-// Is the car on screen the one the customize manager is editing?
-//
-// InstallPart ends by copying the manager's ride over the viewer's, so inside customize the two
-// agree on the car type and part for part. Nothing else in the front end keeps them in step: in
-// the car lot the viewer ride was filled by BuildCarList from a record, and the manager ride is
-// whatever the last customize session left behind. This is the test rather than a menu state,
-// because the car lot and customize both report 0x20.
-bool Trim_ViewerIsCustomizeCar(DWORD* Viewer, DWORD* Manager)
-{
-	if (!Trim_ValidRide(Viewer) || !Trim_ValidRide(Manager)) return false;
-	if (*(int*)Viewer != *(int*)Manager) return false;
+#define CarCustomizeManager_RideInfo (0x940 / 4)
 
-	return memcmp(Viewer + 356, Manager + 356, CARSLOTID_NUM * sizeof(DWORD)) == 0;
+// Byte 0 of the manager is its "has control" flag: BeginCarCustomize sets it to 1 at 0x552DF2 and
+// CarCustomizeManager::UnTakeControl clears it at 0x54FDAA. That is a real customize session, as
+// opposed to the menu state, which reports 0x20 for the car lot as well.
+//
+// The build before this one compared the viewer ride against the manager ride part for part
+// instead. It worked, but only once the parts screen had synced the two, so the key did nothing
+// until you had been into Parts once. Eleven slots differ before that, WIDE_BODY first.
+bool Trim_CustomizeSessionActive()
+{
+	return *(BYTE*)gCarCustomizeManager == 1;
 }
 
-// GarageMainScreen::SetCarType builds SECONDARY_LOGO_<name> straight off the CarTypeInfo instead
-// of going through GetCarTypeLogoHash, so the garage name art is a second place to redirect. It
-// indexes the array by car type, which means handing it the trim's car type is the whole fix.
-//
-// Its five call sites are hooked rather than its entry, because a hook on the entry that wants to
-// call the original has nowhere left to call: the entry is the hook.
-void(__thiscall* GameGarageMainScreenSetCarType)(DWORD* Screen, int CarType) = (void(__thiscall*)(DWORD*, int))0x4A5EE0;
-
-void __fastcall GarageMainScreen_SetCarType(DWORD* Screen, void* EDX_Unused, int CarType)
+DWORD* Trim_CustomizeRide()
 {
-	GameGarageMainScreenSetCarType(Screen, Trim_EffectiveCarType(CarType));
+	return (DWORD*)gCarCustomizeManager + CarCustomizeManager_RideInfo;
 }
-
-// ---------------------------------------------------------------------------------------------
-// Cycling
-// ---------------------------------------------------------------------------------------------
-
-bool TrimSwapKeyWasDown = false;
-
-// Menu state, kept for the My Cars lock that still has to be written. The car lot reports the
-// same 0x20 as customizing, so it cannot tell those two apart and is not used as a gate here.
-#define _profileData     0x83A9D0
-#define profileMenuState *(DWORD*)(_profileData + 0x156A8)
-
-#define MENU_STATE_CAREER_MENU    0x01
-#define MENU_STATE_MAIN_MENU      0x02
-#define MENU_STATE_2P_SPLITSCREEN 0x04
-#define MENU_STATE_CAR_CUSTOMIZE  0x20
 
 // Put a trim on the car the customize manager is editing. Everything visible follows from the
 // two InstallPart calls; nothing is written into a RideInfo by hand.
@@ -516,9 +483,7 @@ bool Trim_Set(int CarType, int TrimType)
 
 	// Physics comes out of the trim's CarTypeInfo the next time it is rebuilt. InstallPart never
 	// asks for one, because a visual part does not change the numbers, so ask here.
-	RideInfo_RebuildPhysicsInfo(Manager + CarCustomizeManager_RideInfo, 0, true, true, true);
-
-	Trim_Remember(CarType, TrimType);
+	RideInfo_RebuildPhysicsInfo(Trim_CustomizeRide(), 0, true, true, true);
 
 	TrimTraceLine("%s: trim -> %s\n", GetCarTypeName(CarType),
 		TrimType >= 0 ? GetCarTypeName(TrimType) : "(none)");
@@ -543,6 +508,22 @@ int Trim_Next(int CarType, int Current)
 	return (At + 1 < Count) ? Trims[At + 1] : -1;
 }
 
+// ---------------------------------------------------------------------------------------------
+// Cycling
+// ---------------------------------------------------------------------------------------------
+
+bool TrimSwapKeyWasDown = false;
+
+// Menu state, kept for the My Cars lock that still has to be written. The car lot reports the
+// same 0x20 as customizing, so it cannot tell those two apart and is not used as a gate here.
+#define _profileData     0x83A9D0
+#define profileMenuState *(DWORD*)(_profileData + 0x156A8)
+
+#define MENU_STATE_CAREER_MENU    0x01
+#define MENU_STATE_MAIN_MENU      0x02
+#define MENU_STATE_2P_SPLITSCREEN 0x04
+#define MENU_STATE_CAR_CUSTOMIZE  0x20
+
 void Trim_PollKey()
 {
 	if (!TrimSwapKey) return;
@@ -558,45 +539,18 @@ void Trim_PollKey()
 	// precondition rather than something the menu state happens to imply.
 	if (*(int*)_TheGameFlowManager != 3) return; // TheGameFlowManager->mCurrentState, 3 = front end
 
-	DWORD* Viewer = CarViewer_GetRideInfo(0);
-	DWORD* Manager = (DWORD*)gCarCustomizeManager + CarCustomizeManager_RideInfo;
-
-	// Customize only, for now. It is the one screen where the car can actually be rebuilt, and it
-	// is where the trim browser is going to live. In the car lot the badges already follow a trim
+	// Customize only, for now. It is the one place the car can actually be rebuilt, and it is
+	// where the trim browser is going to live. In the car lot the badges already follow a trim
 	// that is on the car, there is just no way to change it there yet.
-	if (!Trim_ViewerIsCustomizeCar(Viewer, Manager))
-	{
-		TrimTraceLine("not the customize car, ignoring. viewer %p type %d, manager %p type %d\n",
-			Viewer, Trim_ValidRide(Viewer) ? *(int*)Viewer : -1,
-			Manager, Trim_ValidRide(Manager) ? *(int*)Manager : -1);
+	if (!Trim_CustomizeSessionActive()) return;
 
-		// Which slots disagree. If a keypress in customize lands here, this says whether the two
-		// rides are a whole different car or just a part or two out of step, which decides
-		// whether the test is wrong or the moment is.
-		if (Trim_ValidRide(Viewer) && Trim_ValidRide(Manager) && *(int*)Viewer == *(int*)Manager)
-		{
-			int Differ = 0;
-			int First = -1;
+	DWORD* Ride = Trim_CustomizeRide();
+	if (!Trim_ValidRide(Ride)) return;
 
-			for (int i = 0; i < CARSLOTID_NUM; i++)
-			{
-				if (Viewer[356 + i] == Manager[356 + i]) continue;
-
-				if (First < 0) First = i;
-				Differ++;
-			}
-
-			TrimTraceLine("  same car type, %d slot(s) differ, first is %d %s\n",
-				Differ, First, First >= 0 ? GetCarSlotIDName(First) : "");
-		}
-
-		return;
-	}
-
-	int CarType = *(int*)Manager;
+	int CarType = *(int*)Ride;
 	if (CarType < 0 || CarType >= CarCount) return;
 
-	int Next = Trim_Next(CarType, Trim_OnRide(Manager));
+	int Next = Trim_Next(CarType, Trim_OnRide(Ride));
 
 	if (Next == -2)
 	{
@@ -610,15 +564,28 @@ void Trim_PollKey()
 
 void InitTrimSwap()
 {
-	// Call sites rather than the function entry, so no prologue has to be replayed and the
-	// original stays callable.
+	// Call sites rather than the function entries, so no prologue has to be replayed and the
+	// originals stay callable.
+
+	// Every screen that draws a car's badges, so the trim comes from the car being drawn rather
+	// than from whichever car the viewer happens to hold
+	injector::MakeCALL(0x4B00EF, TrimCarLotRefreshHeader, true);   // UICareerCarLot
+	injector::MakeCALL(0x4ED93C, TrimCarLotRefreshHeader, true);
+
+	injector::MakeCALL(0x4B0664, TrimCribRefreshHeader, true);     // UICareerCribCarSelect
+
+	injector::MakeCALL(0x4E28E3, TrimQRSelectRefreshHeader, true); // UIQRCarSelect
+	injector::MakeCALL(0x4EEFA4, TrimQRSelectRefreshHeader, true);
+	injector::MakeCALL(0x4FA41E, TrimQRSelectRefreshHeader, true);
+	injector::MakeCALL(0x4FC576, TrimQRSelectRefreshHeader, true);
+
+	injector::MakeCALL(0x4E889A, TrimCustomizeBrands, true);       // sub_4BE440, from sub_4E8530
+	injector::MakeCALL(0x4F26C0, TrimOtherCarSelect, true);        // sub_4E7F50
+
 	// Garage name art, the one SECONDARY_LOGO that does not go through GetCarTypeLogoHash
 	injector::MakeCALL(0x4B00DC, GarageMainScreen_SetCarType, true); // GarageMainScreen::SetCarType
 	injector::MakeCALL(0x4B065D, GarageMainScreen_SetCarType, true);
 	injector::MakeCALL(0x4D91D1, GarageMainScreen_SetCarType, true);
 	injector::MakeCALL(0x4E27C9, GarageMainScreen_SetCarType, true);
 	injector::MakeCALL(0x4E8780, GarageMainScreen_SetCarType, true);
-
-	// Carry the trim into a record the moment the car becomes the player's
-	injector::MakeCALL(0x516C52, Trim_FillWithRide_NewRecord, true); // FECarConfig::Init
 }
