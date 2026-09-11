@@ -1,5 +1,7 @@
 #include "stdio.h"
 #include "InGameFunctions.h"
+
+bool Trim_IsPartListable(DWORD* Part, int CarType, int Slot); // TrimSwap.h
 #include "PartLink.h"
 #include "ChooseRimBrand.h"
 
@@ -443,7 +445,8 @@ int GetPartsList(int CarSlotID, DWORD* PartsBList, unsigned int PartAttribFilter
                 if (UnlockSystem_IsCarPartUnlocked(CarCustomizeManager_GetPartUnlockFilter(), CarSlotID, TheCarPart, SomethingUnk)
                     && (CarSlotID != CARSLOTID_HOOD || (*((BYTE*)TheCarPart + 5) & 0x1F) != 5)
                     && !PartLink_IsHiddenFromMenu(TheCarPart) && !PartLink_IsSlotHidden(CarSlotID)
-                    && PartLink_IsPartFiltered(TheCarPart, CarTypeID, CarSlotID))
+                    && PartLink_IsPartFiltered(TheCarPart, CarTypeID, CarSlotID)
+                    && Trim_IsPartListable(TheCarPart, CarTypeID, CarSlotID))
                 {
                     NewBNode = (DWORD*)j__malloc(0x10u);
                     if (NewBNode)

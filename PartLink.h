@@ -276,10 +276,20 @@ void PartLink_ApplyVisibility(DWORD* RideInfo)
 		}
 		else // Find and apply the first available part with the filter.
 		{
-			//DWORD* Wanted = CarPartDatabase_NewGetCarPart((DWORD*)_CarPartDB, CarType, i, PartLinkSwapTarget[i], 0, -1);
 			DWORD* Current = (DWORD*)(RideInfo[356 + i]);
+
+			// A slot a HIDESLOT emptied has to be refilled once the part that hid it is gone.
+			// Without this, hiding is one way: the branch above sets the slot to 0, and
+			// PartLink_GetPartWithFilter returns 0 for an empty slot, so nothing ever comes
+			// back. Swapping to a part that does not hide the hood left the hood gone.
+			//
+			// Only fires on a slot this car type has driven at some point, and only while it is
+			// empty, so it cannot overwrite a part the player picked.
+			if (!Current && PartLinkGoverned[i])
+				Current = CarPartDatabase_NewGetCarPart((DWORD*)_CarPartDB, CarType, i, 0, 0, -1);
+
 			DWORD* Wanted = PartLink_GetPartWithFilter(CarType, i, Current, PartLinkSwapTarget[i]);
-			if (Current != Wanted) RideInfo[356 + i] = (DWORD)Wanted;
+			if ((DWORD*)RideInfo[356 + i] != Wanted) RideInfo[356 + i] = (DWORD)Wanted;
 
 			//continue;
 		}

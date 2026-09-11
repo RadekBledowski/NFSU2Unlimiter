@@ -2,6 +2,8 @@
 #include "InGameFunctions.h"
 #include "PartLink.h"
 
+void Trim_ResolveParts(DWORD* RideInfo); // TrimSwap.h
+
 void __declspec(naked) BuildRandomRideCodeCave()
 {
 	_asm
@@ -564,6 +566,10 @@ void __fastcall RideInfo_UpdatePartsEnabled(DWORD* RideInfo, void* EDX_Unused)
 
     PartLink_Resolve(RideInfo);
     PartLink_ApplyVisibility(RideInfo);
+
+    // Last, so it sees the parts PartLink settled on. Any route that changes a part ends up
+    // here, so nothing else has to remember to keep the trim variants in step.
+    Trim_ResolveParts(RideInfo);
 }
 
 void __fastcall RideInfo_SetPart(DWORD* RideInfo, void* EDX_Unused, int CarSlotID, DWORD* CarPartToSet)
