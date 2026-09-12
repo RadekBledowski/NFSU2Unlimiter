@@ -734,12 +734,18 @@ bool Trim_Set(int CarType, int TrimType)
 
 	CarCustomizeManager_InstallPart(Manager, CARSLOTID_RIGHT_SIDE_MIRROR, Part);
 
-	// The trim's own DefaultBasePaint, installed as a part the same way the Paint Shop does it.
-	// Only on the way on: coming off a trim leaves the colour alone rather than repainting the
-	// car behind the player's back.
-	if (TrimType >= 0)
+	// DefaultBasePaint, installed as a part the same way the Paint Shop does it, and it follows
+	// the trim BOTH ways. Coming off one the car goes back to its own colour, which is what
+	// makes a stock SUPRA look like a stock SUPRA again instead of keeping whatever the last
+	// trim painted it.
+	//
+	// The cost of that is real and deliberate: switching trim overwrites a colour picked in the
+	// Paint Shop. A trim owns its colour, so there is nowhere to put a player choice that the
+	// next switch would not have to throw away anyway.
 	{
-		DWORD Paint = CarTypeInfo_DefaultBasePaint(CarConfigs[TrimType].CarTypeInfo);
+		int PaintFrom = (TrimType >= 0) ? TrimType : CarType;
+
+		DWORD Paint = CarTypeInfo_DefaultBasePaint(CarConfigs[PaintFrom].CarTypeInfo);
 
 		DWORD* PaintPart = Paint
 			? CarPartDatabase_NewGetCarPart((DWORD*)_CarPartDB, CarType, CARSLOTID_BASE_PAINT, Paint, 0, -1)
