@@ -146,8 +146,26 @@ void Trim_BuildTables()
 	for (int i = 0; i < CarCount; i++)
 		TrimParents[i] = Trim_CarTypeFromNameHash(CarConfigs[i].Main.TrimOf);
 
+	// The whole table, because every name in this feature is a CollectionName and nothing else:
+	// the ini a car reads is "<CollectionName>.ini", TrimOf names a CollectionName, and the trim
+	// marker part is "<PARENT CollectionName>_<TRIM CollectionName>". A CollectionName does NOT
+	// have to match the CARS folder the geometry lives in, and when it does not, an ini named
+	// after the folder is read by nobody and the trim silently never exists.
+	TrimTraceLine("car types: %d\n", CarCount);
+
+	for (int i = 0; i < CarCount; i++)
+		TrimTraceLine("  %3d  %-24s usage %d%s\n", i, GetCarTypeName(i),
+			(int)CarTypeInfo_UsageType(CarConfigs[i].CarTypeInfo),
+			(TrimParents[i] >= 0) ? "  <- trim" : "");
+
 	for (int i = 0; i < CarCount; i++)
 	{
+		// TrimOf was set and named a car that is not in the table. Almost always a typo, or the
+		// parent being spelled as its folder rather than its CollectionName.
+		if (TrimParents[i] < 0 && CarConfigs[i].Main.TrimOf)
+			TrimTraceLine("%s: TrimOf names a car type that does not exist, hash 0x%08X\n",
+				GetCarTypeName(i), (unsigned int)CarConfigs[i].Main.TrimOf);
+
 		if (TrimParents[i] < 0) continue;
 
 		TrimTraceLine("trim %s of %s, usage type %d\n", GetCarTypeName(i),
@@ -366,8 +384,12 @@ DWORD* Trim_PartByName(int CarType, int Slot, DWORD NameHash)
 
 bool Trim_ScanVariants(int CarType)
 {
+	// Only cars something declares TrimOf on. Everything else cannot have a variant that
+	// matters, and walking every slot of every part of every car type is not free.
 	int Trims[32];
 	if (!Trim_ListFor(CarType, Trims, 32)) return false;
+
+	TrimTraceLine("scanning %s for trim part variants\n", GetCarTypeName(CarType));
 
 	bool Found = false;
 
@@ -410,10 +432,7 @@ bool Trim_CarHasVariants(int CarType)
 	if ((int)TrimHasVariants.size() != CarCount) TrimHasVariants.assign(CarCount, -1);
 
 	if (TrimHasVariants[CarType] < 0)
-	{
-		TrimTraceLine("scanning %s for trim part variants\n", GetCarTypeName(CarType));
 		TrimHasVariants[CarType] = Trim_ScanVariants(CarType) ? 1 : 0;
-	}
 
 	return TrimHasVariants[CarType] != 0;
 }
