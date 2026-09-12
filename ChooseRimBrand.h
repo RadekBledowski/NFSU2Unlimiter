@@ -123,7 +123,10 @@ bool IsRimAvailable(int CarTypeID, DWORD* CarPart, DWORD BrandNameHash)
         if ((CarPart_GetAppliedAttributeUParam(CarPart, CT_bStringHash("OUTER_RADIUS"), 0) == RimOuterRadius) || (IsNoRimSize(BrandNameHash)) || RemoveRimSizeRestrictions)
         {
             UnlockFilter = CarCustomizeManager_GetPartUnlockFilter();
-            if (UnlockSystem_IsCarPartUnlocked(UnlockFilter, 29, CarPart, *(int*)0x8389B0))
+            // Rims are browsed here rather than through the Body Shop list builder, so the
+            // TRIM filter has to be applied again or a trim's wheels show up on every version.
+            if (UnlockSystem_IsCarPartUnlocked(UnlockFilter, 29, CarPart, *(int*)0x8389B0)
+                && Trim_IsPartListable(CarPart, CarTypeID, CARSLOTID_FRONT_WHEEL))
                 return IsStock | 1;
         }
     }

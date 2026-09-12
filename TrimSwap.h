@@ -406,6 +406,32 @@ DWORD* Trim_VariantFor(int CarType, int Slot, DWORD VersionHash, DWORD* Replaced
 	return nullptr;
 }
 
+// What a version should be wearing in a slot when the part on the car belongs to a different
+// version and does not name a replacement. Prefer a part that claims this version, fall back to
+// one no version has claimed.
+//
+// This is what makes TRIM alone useful. Marking the stock bumper TRIM = GOLF and the R32 one
+// TRIM = GOLF_R32 is enough to have them swap, no TRIM_REPLACES needed, as long as only one
+// part per slot claims each version. TRIM_REPLACES is for when several do and the pairing has
+// to be spelled out.
+DWORD* Trim_FirstPartForVersion(int CarType, int Slot, DWORD VersionHash)
+{
+	DWORD* Unclaimed = nullptr;
+
+	for (DWORD* Part = CarPartDatabase_NewGetCarPart((DWORD*)_CarPartDB, CarType, Slot, 0, 0, -1);
+		Part;
+		Part = CarPartDatabase_NewGetCarPart((DWORD*)_CarPartDB, CarType, Slot, 0, Part, -1))
+	{
+		DWORD Belongs = Trim_PartBelongsTo(Part);
+
+		if (Belongs == VersionHash) return Part;
+
+		if (!Belongs && !Unclaimed) Unclaimed = Part;
+	}
+
+	return Unclaimed;
+}
+
 DWORD* Trim_PartByName(int CarType, int Slot, DWORD NameHash)
 {
 	if (!NameHash) return nullptr;
@@ -532,6 +558,11 @@ void Trim_ResolveParts(DWORD* Ride)
 		if (Belongs && Belongs != VersionHash)
 		{
 			DWORD* Original = Trim_PartByName(CarType, Slot, Trim_PartReplaces(Part));
+
+			// It named nothing, so fall back to whatever this version is allowed to wear here.
+			// Without this a part marked for one version and naming no replacement sits on the car
+			// for ever: it drops out of the list, and nothing takes it off.
+			if (!Original) Original = Trim_FirstPartForVersion(CarType, Slot, VersionHash);
 
 			if (Original)
 			{
