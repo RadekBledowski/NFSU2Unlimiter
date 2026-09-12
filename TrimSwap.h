@@ -125,6 +125,22 @@ int Trim_ParentOf(int CarType)
 	return TrimParents[CarType];
 }
 
+// Whether a trim can be picked yet. PresetCars.h owns the conditions and the checking, so a
+// trim and a sponsor car are unlocked by exactly the same rules and the ini words are the same.
+//
+// This gates CHOOSING a trim, not keeping one. A car already wearing a trim that has since
+// become locked, or that came out of a save made when it was not, keeps it and keeps working.
+// Taking parts off a car the player already owns is not what an unlock means.
+bool PresetUnlockSatisfied(int Condition, const char* Value); // PresetCars.h
+
+bool Trim_Unlocked(int TrimType)
+{
+	if (TrimType < 0 || TrimType >= CarCount) return false;
+
+	return PresetUnlockSatisfied(CarConfigs[TrimType].Main.UnlockCondition,
+		CarConfigs[TrimType].Main.UnlockValue);
+}
+
 bool Trim_IsTrim(int CarType)
 {
 	return Trim_ParentOf(CarType) >= 0;
@@ -168,22 +184,24 @@ void Trim_BuildTables()
 
 		if (TrimParents[i] < 0) continue;
 
-		TrimTraceLine("trim %s of %s, usage type %d\n", GetCarTypeName(i),
-			GetCarTypeName(TrimParents[i]), (int)CarTypeInfo_UsageType(CarConfigs[i].CarTypeInfo));
+		static char const* const ConditionNames[] = { "None", "Code", "Event", "Stage" };
 
-		// A trim that is still a Racer is also a car in the car lot, which is almost never what
-		// was meant and is invisible until someone scrolls past a duplicate.
-		if (CarTypeInfo_UsageType(CarConfigs[i].CarTypeInfo) == 0)
-			TrimTraceLine("  warning: %s is a trim but its UsageType is Racer, set it to Universal\n",
-				GetCarTypeName(i));
+		int Condition = CarConfigs[i].Main.UnlockCondition;
 
-		// PartLink is what HIDESLOT and SWAPSLOT on a trim part run on, and it is off unless the
-		// PARENT car's own ini turns it on. A trim part carrying link attributes with no
-		// <PARENT>.ini next to it looks broken for no visible reason, so say so here.
-		if (!CarConfigs[TrimParents[i]].PartLinking.Enabled)
-			TrimTraceLine("  note: %s has [PartLink] Enabled = 0, so HIDESLOT and SWAPSLOT on its"
-				" trim parts do nothing. Add UnlimiterData\\%s.ini with [PartLink] Enabled = 1.\n",
-				GetCarTypeName(TrimParents[i]), GetCarTypeName(TrimParents[i]));
+		TrimTraceLine("trim %s of %s, usage type %d, unlock %s %s\n", GetCarTypeName(i),
+			GetCarTypeName(TrimParents[i]), (int)CarTypeInfo_UsageType(CarConfigs[i].CarTypeInfo),
+			(Condition >= 0 && Condition <= 3) ? ConditionNames[Condition] : "?",
+			CarConfigs[i].Main.UnlockValue);
+
+		// UnlockSponsorCarsWithoutCheats short circuits every condition inside
+		// PresetUnlockSatisfied, which is right for a sponsor car and surprising here: with it on,
+		// a trim gated on an event or a stage is simply always available. Worth one line rather
+		// than a test round spent wondering why the gate does nothing.
+		//
+		// 0 rather than PRESET_UNLOCK_NONE because that lives in PresetCars.h, which is included
+		// after this file. Only the value crosses over, not the name.
+		if (Condition != 0 && UnlockSponsorCarsWithoutCheats)
+			TrimTraceLine("  note: [SponsorCars] UnlockWithoutCheats = 1 opens this trim regardless\n");
 	}
 }
 
@@ -874,7 +892,18 @@ int Trim_Next(int CarType, int Current)
 	for (int i = 0; i < Count; i++)
 		if (Trims[i] == Current) { At = i; break; }
 
-	return (At + 1 < Count) ? Trims[At + 1] : -1;
+	// Walk forward and off the end into "no trim", stepping over anything still locked. The
+	// filtering is here rather than in Trim_ListFor because that one also answers whether a car
+	// is worth scanning for part variants, and that answer is cached for the run: it must not
+	// depend on how far the career has got.
+	for (int i = At + 1; i < Count; i++)
+	{
+		if (Trim_Unlocked(Trims[i])) return Trims[i];
+
+		TrimTraceLine("  %s is still locked, skipped\n", GetCarTypeName(Trims[i]));
+	}
+
+	return -1;
 }
 
 // ---------------------------------------------------------------------------------------------

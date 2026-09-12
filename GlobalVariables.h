@@ -348,6 +348,11 @@ struct MainSection
 	// type's ini, and anything a car ini can say a trim can say too.
 	// Never inherited from _General.ini: a trim has to say so itself.
 	DWORD TrimOf;
+	// Whether this trim can be picked yet. Same four conditions as a preset car, and the same
+	// PresetUnlockSatisfied does the work, so there is one set of rules to learn rather than two.
+	// Only meaningful on a trim.
+	int UnlockCondition;   // PRESET_UNLOCK_*
+	char UnlockValue[32];
 	bool AlwaysShowHoodUnder;
 	bool AlwaysShowTrunkUnder;
 	bool AlwaysShowDoorPanels;

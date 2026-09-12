@@ -32,6 +32,8 @@ void LoadCarConfigs()
 	DefaultCarConfig.Main.SyncBrakesWithPhysics = mINI_ReadInteger(GeneralINI, "Main", "SyncBrakesWithPhysics", DefaultCarConfig.Main.SyncVisualPartsWithPhysics) != 0;
 	DefaultCarConfig.Main.MirrorBrakes = mINI_ReadInteger(GeneralINI, "Main", "MirrorBrakes", 1) != 0;
 	DefaultCarConfig.Main.TrimOf = 0; // never inherited: a trim says so in its own ini
+	DefaultCarConfig.Main.UnlockCondition = PRESET_UNLOCK_NONE;
+	DefaultCarConfig.Main.UnlockValue[0] = 0;
 	DefaultCarConfig.Main.AlwaysShowHoodUnder = mINI_ReadInteger(GeneralINI, "Main", "AlwaysShowHoodUnder", 0) != 0;
 	DefaultCarConfig.Main.AlwaysShowTrunkUnder = mINI_ReadInteger(GeneralINI, "Main", "AlwaysShowTrunkUnder", 0) != 0;
 	DefaultCarConfig.Main.AlwaysShowDoorPanels = mINI_ReadInteger(GeneralINI, "Main", "AlwaysShowDoorPanels", 0) != 0;
@@ -634,6 +636,19 @@ void LoadCarConfigs()
 		// behind by someone copying _General.ini would hash to 0xFFFFFFFF rather than to nothing.
 		char* TrimOfName = mINI_ReadString(CarINI, "Main", "TrimOf", "");
 		ACarConfig.Main.TrimOf = (TrimOfName && TrimOfName[0]) ? bStringHash(TrimOfName) : 0;
+
+		// Not inherited from _General.ini either, for the same reason TrimOf is not: a default
+		// here would gate every car in the game. Same words as _PresetCars.ini so there is one
+		// spelling to remember.
+		char* TrimCond = mINI_ReadString(CarINI, "Main", "UnlockCondition", "None");
+		ACarConfig.Main.UnlockCondition = PRESET_UNLOCK_NONE;
+		if (_stricmp(TrimCond, "Code") == 0) ACarConfig.Main.UnlockCondition = PRESET_UNLOCK_CODE;
+		else if (_stricmp(TrimCond, "Event") == 0) ACarConfig.Main.UnlockCondition = PRESET_UNLOCK_EVENT;
+		else if (_stricmp(TrimCond, "Stage") == 0) ACarConfig.Main.UnlockCondition = PRESET_UNLOCK_STAGE;
+
+		char* TrimUnlockValue = mINI_ReadString(CarINI, "Main", "UnlockValue", "");
+		strncpy(ACarConfig.Main.UnlockValue, TrimUnlockValue, sizeof(ACarConfig.Main.UnlockValue) - 1);
+		ACarConfig.Main.UnlockValue[sizeof(ACarConfig.Main.UnlockValue) - 1] = 0;
 		ACarConfig.Main.AlwaysShowHoodUnder = mINI_ReadInteger(CarINI, "Main", "AlwaysShowHoodUnder", DefaultCarConfig.Main.AlwaysShowHoodUnder) != 0;
 		ACarConfig.Main.AlwaysShowTrunkUnder = mINI_ReadInteger(CarINI, "Main", "AlwaysShowTrunkUnder", DefaultCarConfig.Main.AlwaysShowTrunkUnder) != 0;
 		ACarConfig.Main.AlwaysShowDoorPanels = mINI_ReadInteger(CarINI, "Main", "AlwaysShowDoorPanels", DefaultCarConfig.Main.AlwaysShowDoorPanels) != 0;
