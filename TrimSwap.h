@@ -205,12 +205,77 @@ int Trim_ListFor(int CarType, int* Out, int Max)
 // Selection
 // ---------------------------------------------------------------------------------------------
 
-// The part's own name, via CarPart_GetName. NewGetCarPart cannot be asked for a part by name:
-// 0x61B980 calls GetTypesFromSlot and compares CarPartTypeNameHashTable[part+7] against what that
-// returns, so the hash argument is not the part name and looking a trim part up that way comes
-// back empty even though the part is there. A part already in hand will still say what it is
-// called, so the slot is enumerated instead and each part asked.
-DWORD Trim_NameHashOfPart(int CarType, DWORD* Part)
+// A part has three names and only one of them is its identity.
+//
+//   PartNameHash at +0x00     the real one. PresetCarSlot::FillWithRide packs exactly this
+//                             into the save as (word[+2] << 16) | word[+0], and FillRideWith
+//                             hands it back to NewGetCarPart to rebuild the part.
+//   NameOffset at +0x08       a string table offset. This is what CarPart_GetName returns and
+//                             it is the DEBUG name, the label Binary shows in its tree. It is
+//                             for looking at, not for matching.
+//   the attributes below      what this feature actually goes by.
+//
+// The first cut of this read trims out of the debug name, which worked only because the test
+// data happened to have matching debug names.
+// ---------------------------------------------------------------------------------------------
+
+#define TRIM_ATTR_TRIM     CT_bStringHash("TRIM")
+#define TRIM_ATTR_REPLACES CT_bStringHash("TRIM_REPLACES")
+
+// Which version of the car this part belongs to, 0 when it belongs to all of them.
+DWORD Trim_PartBelongsTo(DWORD* Part)
+{
+	if (!Part) return 0;
+
+	return CarPart_GetAppliedAttributeUParam(Part, TRIM_ATTR_TRIM, 0);
+}
+
+DWORD Trim_PartReplaces(DWORD* Part)
+{
+	if (!Part) return 0;
+
+	return CarPart_GetAppliedAttributeUParam(Part, TRIM_ATTR_REPLACES, 0);
+}
+
+DWORD Trim_PartNameHash(DWORD* Part)
+{
+	if (!Part) return 0;
+
+	char const* Name = CarPart_GetName(Part);
+
+	return (Name && Name[0]) ? bStringHash((char*)Name) : 0;
+}
+
+// Which of a part's names Binary writes into a Key attribute is still unverified, so
+// TRIM_REPLACES is matched against both the real one and the debug one. One extra compare
+// takes a whole class of "it silently found nothing" out of the first test.
+bool Trim_PartIsNamed(DWORD* Part, DWORD NameHash)
+{
+	if (!Part || !NameHash) return false;
+
+	if (*(DWORD*)Part == NameHash) return true; // PartNameHash
+
+	return Trim_PartNameHash(Part) == NameHash; // bStringHash of the debug name
+}
+
+// ---------------------------------------------------------------------------------------------
+// The marker part
+//
+// Which version a car is wearing is a part in RIGHT_SIDE_MIRROR carrying TRIM. Nothing else
+// installs there: LEFT_SIDE_MIRROR and RIGHT_SIDE_MIRROR appear in the whole tree only inside
+// the carbon slot list, and the mirrors a car actually wears live in WING_MIRROR as one part
+// for both sides.
+//
+// There is a marker for the base car too, carrying TRIM = <the car's own name>. Worth having
+// rather than leaving the slot empty, because RideInfo::SetStockParts fills every slot with
+// its first part, so a fresh car would otherwise come out wearing whichever marker happens to
+// be first in the database.
+// ---------------------------------------------------------------------------------------------
+
+// LEGACY. Before TRIM existed the marker was recognised by its debug name being <CAR>_<TRIM>.
+// Still honoured so existing data keeps working, but the attribute wins and new parts should
+// only use the attribute: a debug name is a label and nothing stops two parts sharing one.
+DWORD Trim_MarkerNameFallback(int CarType, DWORD* Part)
 {
 	if (!Part) return 0;
 
@@ -228,27 +293,38 @@ DWORD Trim_NameHashOfPart(int CarType, DWORD* Part)
 	return bStringHash((char*)(Name + Prefix + 1));
 }
 
-// The part standing for a trim, found by walking the slot rather than by name.
-//
-//   Part = NewGetCarPart(db, CarType, Slot, 0, 0, -1);      first
-//   Part = NewGetCarPart(db, CarType, Slot, 0, Part, -1);   next
-DWORD* Trim_PartFor(int CarType, int TrimType)
+// The version name a marker part stands for, 0 if it is not a marker at all.
+DWORD Trim_MarkerVersion(int CarType, DWORD* Part)
 {
-	if (TrimType < 0 || TrimType >= CarCount) return nullptr;
+	DWORD Attribute = Trim_PartBelongsTo(Part);
 
-	DWORD Wanted = Trim_NameHashOf(TrimType);
+	return Attribute ? Attribute : Trim_MarkerNameFallback(CarType, Part);
+}
+
+// The marker part for one version of this car. Walking the slot is the only way: NewGetCarPart
+// matches on PartNameHash, which is not what is being looked for here.
+DWORD* Trim_MarkerPartFor(int CarType, DWORD VersionHash)
+{
+	if (!VersionHash) return nullptr;
 
 	for (DWORD* Part = CarPartDatabase_NewGetCarPart((DWORD*)_CarPartDB, CarType, CARSLOTID_RIGHT_SIDE_MIRROR, 0, 0, -1);
 		Part;
 		Part = CarPartDatabase_NewGetCarPart((DWORD*)_CarPartDB, CarType, CARSLOTID_RIGHT_SIDE_MIRROR, 0, Part, -1))
 	{
-		if (Trim_NameHashOfPart(CarType, Part) == Wanted) return Part;
+		if (Trim_MarkerVersion(CarType, Part) == VersionHash) return Part;
 	}
 
 	return nullptr;
 }
 
-// Which trim this car is wearing, by matching the part in RIGHT_SIDE_MIRROR against each trim.
+DWORD* Trim_PartFor(int CarType, int TrimType)
+{
+	if (TrimType < 0 || TrimType >= CarCount) return nullptr;
+
+	return Trim_MarkerPartFor(CarType, Trim_NameHashOf(TrimType));
+}
+
+// Which trim this car is wearing, or -1 for none.
 int Trim_OnRide(DWORD* Ride)
 {
 	if (!Trim_ValidRide(Ride)) return -1;
@@ -258,15 +334,28 @@ int Trim_OnRide(DWORD* Ride)
 
 	DWORD* Installed = (DWORD*)Ride[356 + CARSLOTID_RIGHT_SIDE_MIRROR];
 
-	int Trim = Trim_CarTypeFromNameHash(Trim_NameHashOfPart(CarType, Installed));
+	int Trim = Trim_CarTypeFromNameHash(Trim_MarkerVersion(CarType, Installed));
 
-	// A part whose name happens to parse still has to be a declared trim OF THIS CAR, otherwise
-	// any part called <CAR>_<SOMETHING> would be read as one.
+	// The marker for the base car names the car itself, which is not a trim of anything, so this
+	// also turns that into "no trim" without a special case.
 	if (Trim >= 0 && Trim_ParentOf(Trim) != CarType) return -1;
 
 	return Trim;
 }
 
+// The version of the car a ride is wearing, as a name hash. Never 0: with no trim fitted the
+// car is its own version, which is what lets a part be marked as belonging to the base car.
+DWORD Trim_VersionOnRide(DWORD* Ride)
+{
+	if (!Trim_ValidRide(Ride)) return 0;
+
+	int CarType = *(int*)Ride;
+	if (CarType < 0 || CarType >= CarCount) return 0;
+
+	int Trim = Trim_OnRide(Ride);
+
+	return Trim_NameHashOf(Trim >= 0 ? Trim : CarType);
+}
 // ---------------------------------------------------------------------------------------------
 // Trim part variants
 //
@@ -300,62 +389,16 @@ int Trim_OnRide(DWORD* Ride)
 // hashes turn out not to match, the fix is in Trim_PartNameHash and nowhere else.
 // ---------------------------------------------------------------------------------------------
 
-#define TRIM_ATTR_TRIM     CT_bStringHash("TRIM")
-#define TRIM_ATTR_REPLACES CT_bStringHash("TRIM_REPLACES")
-
-DWORD Trim_PartBelongsTo(DWORD* Part)
+// The part in this slot that stands in for Replaced while VersionHash is the car being worn.
+DWORD* Trim_VariantFor(int CarType, int Slot, DWORD VersionHash, DWORD* Replaced)
 {
-	if (!Part) return 0;
-
-	return CarPart_GetAppliedAttributeUParam(Part, TRIM_ATTR_TRIM, 0);
-}
-
-DWORD Trim_PartReplaces(DWORD* Part)
-{
-	if (!Part) return 0;
-
-	return CarPart_GetAppliedAttributeUParam(Part, TRIM_ATTR_REPLACES, 0);
-}
-
-// A part has two names and it is not obvious which one Binary hashes into a Key attribute:
-//
-//   CarPart.PartNameHash at +0x00, which is what PresetCarSlot::FillWithRide packs into the
-//     save as (word[+2] << 16) | word[+0], and what FillRideWith hands back to NewGetCarPart
-//     to rebuild the exact part. So that one IS a working lookup key, contrary to the note
-//     this file used to carry: the earlier test hashed the string CarPart_GetName returns,
-//     which is a different field at +0x08.
-//   the string at NameOffset, which is what CarPart_GetName returns.
-//
-// Matching either costs one extra compare and takes a whole class of "it silently found
-// nothing" out of the first test.
-DWORD Trim_PartNameHash(DWORD* Part)
-{
-	if (!Part) return 0;
-
-	char const* Name = CarPart_GetName(Part);
-
-	return (Name && Name[0]) ? bStringHash((char*)Name) : 0;
-}
-
-bool Trim_PartIsNamed(DWORD* Part, DWORD NameHash)
-{
-	if (!Part || !NameHash) return false;
-
-	if (*(DWORD*)Part == NameHash) return true; // CarPart.PartNameHash
-
-	return Trim_PartNameHash(Part) == NameHash; // bStringHash(CarPart_GetName)
-}
-
-// The part in this slot that stands in for Replaced while TrimHash is fitted.
-DWORD* Trim_VariantFor(int CarType, int Slot, DWORD TrimHash, DWORD* Replaced)
-{
-	if (!TrimHash || !Replaced) return nullptr;
+	if (!VersionHash || !Replaced) return nullptr;
 
 	for (DWORD* Part = CarPartDatabase_NewGetCarPart((DWORD*)_CarPartDB, CarType, Slot, 0, 0, -1);
 		Part;
 		Part = CarPartDatabase_NewGetCarPart((DWORD*)_CarPartDB, CarType, Slot, 0, Part, -1))
 	{
-		if (Trim_PartBelongsTo(Part) != TrimHash) continue;
+		if (Trim_PartBelongsTo(Part) != VersionHash) continue;
 
 		if (Trim_PartIsNamed(Replaced, Trim_PartReplaces(Part))) return Part;
 	}
@@ -473,8 +516,7 @@ void Trim_ResolveParts(DWORD* Ride)
 	DWORD Signature = Trim_RideSignature(Ride);
 	if (TrimResolveCacheValid && Signature == TrimResolveSignature) return;
 
-	int Trim = Trim_OnRide(Ride);
-	DWORD TrimHash = (Trim >= 0) ? Trim_NameHashOf(Trim) : 0;
+	DWORD VersionHash = Trim_VersionOnRide(Ride);
 
 	for (int Slot = CARSLOTID_MODEL_FIRST; Slot <= CARSLOTID_MODEL_LAST; Slot++)
 	{
@@ -485,9 +527,9 @@ void Trim_ResolveParts(DWORD* Ride)
 
 		DWORD Belongs = Trim_PartBelongsTo(Part);
 
-		// A variant belonging to a trim that is no longer fitted, which includes no trim at all.
-		// Put back what it says it replaced. This is the half HIDESLOT never had.
-		if (Belongs && Belongs != TrimHash)
+		// A part belonging to a version the car is not wearing any more. Put back what it says it
+		// replaced. This is the half HIDESLOT never had.
+		if (Belongs && Belongs != VersionHash)
 		{
 			DWORD* Original = Trim_PartByName(CarType, Slot, Trim_PartReplaces(Part));
 
@@ -498,11 +540,9 @@ void Trim_ResolveParts(DWORD* Ride)
 			}
 		}
 
-		if (!TrimHash) continue;
-
-		// And whatever is there now, if this trim has a stand-in for it, that goes on instead.
+		// And whatever is there now, if this version has a stand-in for it, that goes on instead.
 		// Already wearing the right variant is a no-op: nothing replaces a variant.
-		DWORD* Variant = Trim_VariantFor(CarType, Slot, TrimHash, Part);
+		DWORD* Variant = Trim_VariantFor(CarType, Slot, VersionHash, Part);
 
 		if (Variant) Ride[356 + Slot] = (DWORD)Variant;
 	}
@@ -519,16 +559,17 @@ bool Trim_IsPartListable(DWORD* Part, int CarType, int Slot)
 	if (!Part) return true;
 	if (!Trim_CarHasVariants(CarType)) return true;
 
-	int Trim = Trim_OnRide((DWORD*)gTheRideInfo);
-	DWORD TrimHash = (Trim >= 0) ? Trim_NameHashOf(Trim) : 0;
+	DWORD VersionHash = Trim_VersionOnRide((DWORD*)gTheRideInfo);
 
 	DWORD Belongs = Trim_PartBelongsTo(Part);
 
-	// A trim's own part exists only while that trim is fitted
-	if (Belongs) return Belongs == TrimHash;
+	// A part that names a version exists only while the car is wearing that version. Marking a
+	// part with the BASE car's name is how a part is kept out of the trims, which is the other
+	// half of what people want and costs one attribute on the few parts that need it.
+	if (Belongs) return Belongs == VersionHash;
 
-	// and a stock part steps aside for the fitted trim's stand-in
-	if (TrimHash && Trim_VariantFor(CarType, Slot, TrimHash, Part)) return false;
+	// An unmarked part is shared by every version, unless this one has a stand-in for it.
+	if (Trim_VariantFor(CarType, Slot, VersionHash, Part)) return false;
 
 	return true;
 }
@@ -742,12 +783,15 @@ bool Trim_Set(int CarType, int TrimType)
 {
 	DWORD* Manager = (DWORD*)gCarCustomizeManager;
 
-	DWORD* Part = (TrimType >= 0) ? Trim_PartFor(CarType, TrimType) : nullptr;
+	// Going back to no trim installs the base car's own marker when there is one, rather than
+	// emptying the slot. RideInfo::SetStockParts fills every slot with its first part, so an
+	// empty RIGHT_SIDE_MIRROR is not a state the game would ever produce on its own.
+	DWORD* Part = Trim_MarkerPartFor(CarType, Trim_NameHashOf(TrimType >= 0 ? TrimType : CarType));
 
 	if (TrimType >= 0 && !Part)
 	{
-		TrimTraceLine("%s: no part named %s_%s in RIGHT_SIDE_MIRROR\n",
-			GetCarTypeName(CarType), GetCarTypeName(CarType), GetCarTypeName(TrimType));
+		TrimTraceLine("%s: no RIGHT_SIDE_MIRROR part carries TRIM = %s\n",
+			GetCarTypeName(CarType), GetCarTypeName(TrimType));
 		return false;
 	}
 
