@@ -554,6 +554,12 @@ InventoryCar* __stdcall FindPresetCarAfterGivenCar(DWORD FlagsToCheck, Inventory
 	return nullptr;
 }
 
+// Both branches of the caves below are tail jumps into compiled C++, which uses ECX as scratch
+// like any other register. The game reads ECX again after some of these calls, so everything
+// they can land on goes through a shim that puts it back. See the ECX note in FeCarLimits.h;
+// the macros come from there, which is included first.
+FECARLIMITS_KEEP_ECX_2(FindPresetCarAfterGivenCar_KeepEcx, FindPresetCarAfterGivenCar)
+
 void __declspec(naked) FEPlayerCarDB_FindCarWithFlagAfterGivenCarCodeCave()
 {
 	_asm
@@ -573,10 +579,10 @@ void __declspec(naked) FEPlayerCarDB_FindCarWithFlagAfterGivenCarCodeCave()
 		jmp eax
 
 		ChainFe :
-		jmp GetCarFiltered
+		jmp GetCarFiltered_KeepEcx
 
 			ItsPreset :
-		jmp FindPresetCarAfterGivenCar
+		jmp FindPresetCarAfterGivenCar_KeepEcx
 	}
 }
 
@@ -615,8 +621,9 @@ void __declspec(naked) FEPlayerCarDB_GetCarForSlotCodeCave()
 			jmp eax
 
 			ChainFe :
-		// __fastcall(this in ecx, unused edx, hash on the stack) matches this entry state
-		jmp GetCarRecordByHandle
+		// __fastcall(this in ecx, unused edx, hash on the stack) matches this entry state,
+		// and the shim keeps ECX, which check_quick_race_unlock at 0x529CE2 reads after the call
+		jmp GetCarRecordByHandle_KeepEcx
 	}
 }
 

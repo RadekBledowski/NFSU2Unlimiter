@@ -557,6 +557,9 @@ __declspec(naked) void StartQuickRaceHook3()
 // next one to reuse ECX is not going to announce itself either.
 // ---------------------------------------------------------------------------------------------
 
+// These macros are used from PresetCars.h as well, whose code caves sit on top of the same
+// addresses and tail jump into these replacements.
+//
 // Arity is the number of STACK arguments, which is the parameter count minus two: __fastcall
 // passes the first two in ECX and EDX. DefaultStockCars(FEPlayerCarDB*, int, int) therefore has
 // ONE stack argument and returns with ret 4, not two. Check the ret of the generated code before
