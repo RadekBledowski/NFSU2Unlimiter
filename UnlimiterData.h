@@ -87,6 +87,7 @@ void LoadCarConfigs()
 	DefaultCarConfig.BodyShop.Interior = mINI_ReadInteger(GeneralINI, "BodyShop", "Interior", 0) != 0;
 	DefaultCarConfig.BodyShop.Roof = mINI_ReadInteger(GeneralINI, "BodyShop", "Roof", 0) != 0;
 	DefaultCarConfig.BodyShop.Brakes = mINI_ReadInteger(GeneralINI, "BodyShop", "Brakes", 0) != 0;
+	DefaultCarConfig.BodyShop.Tires = mINI_ReadInteger(GeneralINI, "BodyShop", "Tires", 0) != 0;
 	DefaultCarConfig.BodyShop.Headlights = mINI_ReadInteger(GeneralINI, "BodyShop", "Headlights", 1) != 0;
 	DefaultCarConfig.BodyShop.Taillights = mINI_ReadInteger(GeneralINI, "BodyShop", "Taillights", 1) != 0;
 	DefaultCarConfig.BodyShop.Mirrors = mINI_ReadInteger(GeneralINI, "BodyShop", "Mirrors", 1) != 0;
@@ -193,6 +194,9 @@ void LoadCarConfigs()
 	DefaultCarConfig.Icons.BodyShopRims = mINI_ReadHashS(GeneralINI, "Icons", "BodyShopRims", "VISUAL_PART_RIMS");
 	DefaultCarConfig.Icons.BodyShopRimsCustom = mINI_ReadHashS(GeneralINI, "Icons", "BodyShopRimsCustom", "VISUAL_RIMS_BRAND_CUSTOM");
 	DefaultCarConfig.Icons.BodyShopBrakes = mINI_ReadHashS(GeneralINI, "Icons", "BodyShopBrakes", "VISUAL_PART_BRAKES");
+	// The rims icon by default only because it is one that certainly exists. Point this at an
+	// icon of your own once the FNG has one, otherwise two categories wear the same picture.
+	DefaultCarConfig.Icons.BodyShopTires = mINI_ReadHashS(GeneralINI, "Icons", "BodyShopTires", "VISUAL_PART_RIMS");
 	DefaultCarConfig.Icons.BodyShopCarbonFiber = mINI_ReadHashS(GeneralINI, "Icons", "BodyShopCarbonFiber", "VISUAL_PART_CARBON_FIBRE");
 	DefaultCarConfig.Icons.BodyShopCarbonFiberHood = mINI_ReadHashS(GeneralINI, "Icons", "BodyShopCarbonFiberHood", "VISUAL_PART_CARBON_FIBRE_HOODS");
 	DefaultCarConfig.Icons.BodyShopCarbonFiberSpoiler = mINI_ReadHashS(GeneralINI, "Icons", "BodyShopCarbonFiberSpoiler", "VISUAL_PART_CARBON_FIBRE_SPOILERS");
@@ -431,6 +435,7 @@ void LoadCarConfigs()
 	DefaultCarConfig.Names.BodyShopRims = mINI_ReadHashS(GeneralINI, "Names", "BodyShopRims", "VISUAL_PART_RIMS");
 	DefaultCarConfig.Names.BodyShopRimsCustom = mINI_ReadHashS(GeneralINI, "Names", "BodyShopRimsCustom", "RIMS_BRAND_CUSTOM");
 	DefaultCarConfig.Names.BodyShopBrakes = mINI_ReadHashS(GeneralINI, "Names", "BodyShopBrakes", "VISUAL_PART_BRAKES");
+	DefaultCarConfig.Names.BodyShopTires = mINI_ReadHashS(GeneralINI, "Names", "BodyShopTires", "VISUAL_PART_RIMS");
 	DefaultCarConfig.Names.BodyShopCarbonFiber = mINI_ReadHashS(GeneralINI, "Names", "BodyShopCarbonFiber", "VISUAL_PART_CARBON_FIBRE");
 	DefaultCarConfig.Names.BodyShopCarbonFiberHood = mINI_ReadHashS(GeneralINI, "Names", "BodyShopCarbonFiberHood", "VISUAL_PART_CARBON_FIBRE_HOODS");
 	DefaultCarConfig.Names.BodyShopCarbonFiberSpoiler = mINI_ReadHashS(GeneralINI, "Names", "BodyShopCarbonFiberSpoiler", "VISUAL_PART_CARBON_FIBRE_SPOILERS");
@@ -702,6 +707,7 @@ void LoadCarConfigs()
 		ACarConfig.BodyShop.Interior = mINI_ReadInteger(CarINI, "BodyShop", "Interior", DefaultCarConfig.BodyShop.Interior) != 0;
 		ACarConfig.BodyShop.Roof = mINI_ReadInteger(CarINI, "BodyShop", "Roof", DefaultCarConfig.BodyShop.Roof) != 0;
 		ACarConfig.BodyShop.Brakes = mINI_ReadInteger(CarINI, "BodyShop", "Brakes", DefaultCarConfig.BodyShop.Brakes) != 0;
+		ACarConfig.BodyShop.Tires = mINI_ReadInteger(CarINI, "BodyShop", "Tires", DefaultCarConfig.BodyShop.Tires) != 0;
 		ACarConfig.BodyShop.Headlights = mINI_ReadInteger(CarINI, "BodyShop", "Headlights", DefaultCarConfig.BodyShop.Headlights) != 0;
 		ACarConfig.BodyShop.Taillights = mINI_ReadInteger(CarINI, "BodyShop", "Taillights", DefaultCarConfig.BodyShop.Taillights) != 0;
 		ACarConfig.BodyShop.Mirrors = mINI_ReadInteger(CarINI, "BodyShop", "Mirrors", DefaultCarConfig.BodyShop.Mirrors) != 0;
@@ -808,6 +814,7 @@ void LoadCarConfigs()
 		ACarConfig.Icons.BodyShopRims = mINI_ReadHash(CarINI, "Icons", "BodyShopRims", DefaultCarConfig.Icons.BodyShopRims);
 		ACarConfig.Icons.BodyShopRimsCustom = mINI_ReadHash(CarINI, "Icons", "BodyShopRimsCustom", DefaultCarConfig.Icons.BodyShopRimsCustom);
 		ACarConfig.Icons.BodyShopBrakes = mINI_ReadHash(CarINI, "Icons", "BodyShopBrakes", DefaultCarConfig.Icons.BodyShopBrakes);
+		ACarConfig.Icons.BodyShopTires = mINI_ReadHash(CarINI, "Icons", "BodyShopTires", DefaultCarConfig.Icons.BodyShopTires);
 		ACarConfig.Icons.BodyShopCarbonFiber = mINI_ReadHash(CarINI, "Icons", "BodyShopCarbonFiber", DefaultCarConfig.Icons.BodyShopCarbonFiber);
 		ACarConfig.Icons.BodyShopCarbonFiberHood = mINI_ReadHash(CarINI, "Icons", "BodyShopCarbonFiberHood", DefaultCarConfig.Icons.BodyShopCarbonFiberHood);
 		ACarConfig.Icons.BodyShopCarbonFiberSpoiler = mINI_ReadHash(CarINI, "Icons", "BodyShopCarbonFiberSpoiler", DefaultCarConfig.Icons.BodyShopCarbonFiberSpoiler);
@@ -1046,6 +1053,7 @@ void LoadCarConfigs()
 		ACarConfig.Names.BodyShopRims = mINI_ReadHash(CarINI, "Names", "BodyShopRims", DefaultCarConfig.Names.BodyShopRims);
 		ACarConfig.Names.BodyShopRimsCustom = mINI_ReadHash(CarINI, "Names", "BodyShopRimsCustom", DefaultCarConfig.Names.BodyShopRimsCustom);
 		ACarConfig.Names.BodyShopBrakes = mINI_ReadHash(CarINI, "Names", "BodyShopBrakes", DefaultCarConfig.Names.BodyShopBrakes);
+		ACarConfig.Names.BodyShopTires = mINI_ReadHash(CarINI, "Names", "BodyShopTires", DefaultCarConfig.Names.BodyShopTires);
 		ACarConfig.Names.BodyShopCarbonFiber = mINI_ReadHash(CarINI, "Names", "BodyShopCarbonFiber", DefaultCarConfig.Names.BodyShopCarbonFiber);
 		ACarConfig.Names.BodyShopCarbonFiberHood = mINI_ReadHash(CarINI, "Names", "BodyShopCarbonFiberHood", DefaultCarConfig.Names.BodyShopCarbonFiberHood);
 		ACarConfig.Names.BodyShopCarbonFiberSpoiler = mINI_ReadHash(CarINI, "Names", "BodyShopCarbonFiberSpoiler", DefaultCarConfig.Names.BodyShopCarbonFiberSpoiler);

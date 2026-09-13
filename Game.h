@@ -232,6 +232,12 @@ int LoaderCarInfo_Hook(bChunk* chunk)
 
 			break;
 
+		case BCHUNK_SPEED_CARPART_TYPENAME_TABLE:
+			// The tyre parts sit in one shared collection, so every car's tyre slot has to search
+			// it. This is the table GetTypesFromSlot reads and it only exists from here on.
+			Tire_OfferPartsToEveryCar();
+			break;
+
 		case BCHUNK_SPEED_CARPART_ANIMHOOKUP_TABLE:
 			CarSlotAnimHookupTable = *(CarSlotAnimHookup**)0x8A1CDC;
 

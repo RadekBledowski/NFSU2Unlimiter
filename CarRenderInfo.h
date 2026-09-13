@@ -1,6 +1,8 @@
 #include "stdio.h"
 #include "InGameFunctions.h"
 
+DWORD Tire_TextureHashForRide(DWORD* RideInfo); // TireMaterial.h
+
 #include "CarRenderInfoExtra.h"
 
 // CarRenderInfo::Render
@@ -1093,6 +1095,12 @@ int GetTempCarSkinTextures(DWORD* textures_to_load, int num_textures, int max_te
 
 		//textures_to_load[180 - 87] = WheelTextureHash; // REAR WHEEL PAINT??
 	}
+
+	// TYRE. The texture a tyre part names has to be streamed in with the car, exactly like a
+	// vinyl or a rim texture, or the renderer has nothing to point the RUBBER material at.
+	DWORD TireTextureHash = Tire_TextureHashForRide(ride);
+	if (TireTextureHash)
+		num_textures += UsedCarTextureAddToTable(textures_to_load, num_textures, max_textures, TireTextureHash);
 
 	// SPINNER
 	DWORD SpinnerTextureHash = GetSpinnerTextureHash(ride, 0);

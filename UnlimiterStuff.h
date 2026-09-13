@@ -104,6 +104,10 @@ int Init()
 	// Misc
 	ExpandMemoryPools = mINI_ReadInteger(Settings, "Misc", "ExpandMemoryPools", 1) != 0;
 	TrimSwapKey = mINI_ReadInteger(Settings, "Misc", "TrimSwapKey", 0);
+	// String first: mINI_ReadHash hashes whatever it finds, and an empty key would come back as
+	// bStringHash("") = 0xFFFFFFFF rather than off.
+	char* TireCollectionName = mINI_ReadString(Settings, "Misc", "TirePartsCollection", "");
+	TirePartsCollection = (TireCollectionName && TireCollectionName[0]) ? bStringHash(TireCollectionName) : 0;
 	AddOnOpponentsPartsFix = mINI_ReadInteger(Settings, "Misc", "ForceStockPartsOnAddOnOpponents", 0) != 0;
 	ExtendFeCarLimits = mINI_ReadInteger(Settings, "Misc", "ExtendFeCarLimits", 0) != 0;// Doubles the amount of stock and tuned cars a player can have in a profile.
 	StaticCameraGenericFallback = mINI_ReadInteger(Settings, "Misc", "StaticCameraGenericFallback", 1) != 0;
@@ -132,7 +136,7 @@ int Init()
 	// Read as a string first. mINI_ReadHash hashes whatever it finds, and the key is present but
 	// empty by default, so it would come back as bStringHash("") = 0xFFFFFFFF rather than off.
 	char* TireTextureName = mINI_ReadString(Settings, "Debug", "TireTexture", "");
-	TireTextureHash = (TireTextureName && TireTextureName[0]) ? bStringHash(TireTextureName) : 0;
+	TireTextureOverride = (TireTextureName && TireTextureName[0]) ? bStringHash(TireTextureName) : 0;
 	EnableReleasePrintf = mINI_ReadInteger(Settings, "Debug", "EnableReleasePrintf", EnableReleasePrintf) != 0;
 
 	// Count Cars Automatically
