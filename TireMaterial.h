@@ -98,6 +98,18 @@ bool Tire_AlreadyProbed(DWORD* Model)
 	return false;
 }
 
+std::vector<DWORD*> TireWarned;
+
+bool Tire_AlreadyWarned(DWORD* Model)
+{
+	for (size_t i = 0; i < TireWarned.size(); i++)
+		if (TireWarned[i] == Model) return true;
+
+	if (TireWarned.size() < 64) TireWarned.push_back(Model);
+
+	return false;
+}
+
 // The material some name on this model is currently bound to, which is how the experiment gets a
 // real eLightMaterial without inventing one.
 DWORD* Tire_MaterialBoundTo(DWORD* Model, DWORD NameHash)
@@ -168,16 +180,35 @@ void __fastcall Tire_ReplaceLightMaterial(DWORD* Model, void* EDX_Unused, int Na
 		DWORD* Source = Tire_MaterialBoundTo(Model, TireMaterialSwapFrom);
 
 		if (Source) eModel_ReplaceLightMaterial_Game(Model, TIRE_MATERIAL_RUBBER, (int)Source);
+		else if (!Tire_AlreadyWarned(Model))
+			TireProbeLine("model %p: TireMaterialSwapFrom 0x%08X is not a material on this model,"
+				" nothing to copy. The probe lines above list the names it does have.\n",
+				Model, (unsigned int)TireMaterialSwapFrom);
 	}
 
 	eModel_ReplaceLightMaterial_Game(Model, NameHash, Material);
 }
 
+// THE CAR IS DRAWN BY RenderFast, NOT BY Render. The first cut of this hooked only the front
+// wheel block inside CarRenderInfo::Render and the probe file was never even created, which
+// was not evidence about light materials, only about the hook never running.
+//
+// There are four wheel blocks, each opening with the same push of MAGSILVER:
+//
+//     0x617979  RenderFast, front wheel
+//     0x6179C6  RenderFast, rear wheel
+//     0x6277B1  Render,     front wheel
+//     0x62782E  Render,     rear wheel
+//
+// All four, because which one runs depends on the screen and being wrong about that is what
+// wasted the first attempt.
 void InitTireMaterial()
 {
 	if (!TireMaterialProbe && !TireMaterialSwapFrom) return;
 
-	// The front wheel's MAGSILVER call. Hooked at the call site, so the original stays callable
-	// and no prologue has to be replayed.
-	injector::MakeCALL(0x6277B1, Tire_ReplaceLightMaterial, true); // CarRenderInfo::Render
+	// Call sites, so the original stays callable and no prologue has to be replayed.
+	injector::MakeCALL(0x617979, Tire_ReplaceLightMaterial, true); // RenderFast, front
+	injector::MakeCALL(0x6179C6, Tire_ReplaceLightMaterial, true); // RenderFast, rear
+	injector::MakeCALL(0x6277B1, Tire_ReplaceLightMaterial, true); // Render, front
+	injector::MakeCALL(0x62782E, Tire_ReplaceLightMaterial, true); // Render, rear
 }
