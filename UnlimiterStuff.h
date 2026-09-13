@@ -31,6 +31,7 @@ char AttachmentNameBuf[64];
 #include "CarRenderInfo.h"
 #include "RideInfo.h"
 #include "TrimSwap.h"
+#include "TireMaterial.h"
 #include "RidePhysicsInfo.h"
 #include "CarLoader.h"
 #include "CarCustomizeManager.h"
@@ -127,6 +128,8 @@ int Init()
 	ExportCameraInfoIni = mINI_ReadInteger(Settings, "Debug", "ExportCameraInfo", 0) != 0;
 	PartLinkTrace = mINI_ReadInteger(Settings, "Debug", "PartLinkTrace", 0) != 0;
 	TrimTrace = mINI_ReadInteger(Settings, "Debug", "TrimTrace", 0) != 0;
+	TireMaterialProbe = mINI_ReadInteger(Settings, "Debug", "TireMaterialProbe", 0) != 0;
+	TireMaterialSwapFrom = mINI_ReadHash(Settings, "Debug", "TireMaterialSwapFrom", 0);
 	EnableReleasePrintf = mINI_ReadInteger(Settings, "Debug", "EnableReleasePrintf", EnableReleasePrintf) != 0;
 
 	// Count Cars Automatically
@@ -171,6 +174,7 @@ int Init()
 	injector::MakeJMP(0x511E60, GetCarTypeLogoHash, true); // 10 references
 
 	InitTrimSwap();
+	InitTireMaterial();
 
 	// Extra Customization
 	// Body shop
