@@ -131,8 +131,8 @@ int Init()
 	TireMaterialProbe = mINI_ReadInteger(Settings, "Debug", "TireMaterialProbe", 0) != 0;
 	// Read as a string first. mINI_ReadHash hashes whatever it finds, and the key is present but
 	// empty by default, so it would come back as bStringHash("") = 0xFFFFFFFF rather than off.
-	char* TireSwapName = mINI_ReadString(Settings, "Debug", "TireMaterialSwapFrom", "");
-	TireMaterialSwapFrom = (TireSwapName && TireSwapName[0]) ? bStringHash(TireSwapName) : 0;
+	char* TireTextureName = mINI_ReadString(Settings, "Debug", "TireTexture", "");
+	TireTextureHash = (TireTextureName && TireTextureName[0]) ? bStringHash(TireTextureName) : 0;
 	EnableReleasePrintf = mINI_ReadInteger(Settings, "Debug", "EnableReleasePrintf", EnableReleasePrintf) != 0;
 
 	// Count Cars Automatically

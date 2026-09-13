@@ -6,61 +6,93 @@
 #include "includes\injector\injector.hpp"
 
 // ---------------------------------------------------------------------------------------------
-// Tyre material probe
+// Tyre texture, driven per material
 //
-// Idea being tested: tyres are the one thing wearing the material RUBBER, and their UVs are the
-// same on every rim, so if that material's appearance can be driven from a part the way carbon
-// and rim colour already are, tyres become customisable. Toyo lettering, a cut Bridgestone, and
-// so on.
+// The goal: give the tyre its own texture (Toyo lettering, a cut Bridgestone) without touching
+// the rim, on unmodified wheel geometry.
 //
-// What is already known, from the geometry and from the disassembly:
+// WHAT THE GEOMETRY ACTUALLY SAYS. Dumping 5ZIGEN_STYLE01_15_23_A out of
+// CARS\WHEELS\GEOMETRY_5ZIGEN.BIN:
 //
-//   RUBBER is bStringHash "RUBBER" = 0x78743CA1, and it is in every GEOMETRY_<brand>.BIN under
-//   CARS\WHEELS next to MAGSILVER, MAGCHROME and MAGGUNMETAL. It is also in every car's own
-//   GEOMETRY.BIN, 30 to 55 times, which is the stock wheels rather than anything else, so
-//   "tyres only" holds in spirit but not literally.
+//     textures (1):          [0] 0x733AE956
+//     light materials (3):   [0] RUBBER  [1] 0x010CB64A  [2] MAGCHROME
+//     materials (3):         tex 0 + RUBBER      120 tris   <- the tyre
+//                            tex 0 + MAGCHROME   355 tris   <- the rim
+//                            tex 0 + 0x010CB64A   22 tris
 //
-//   CarRenderInfo::Render already does exactly the call this feature needs, three times, on the
-//   wheel model at 0x6277B1, 0x6277D1 and 0x6277F1:
+// One texture slot, three materials. Exactly what Radek said: rim and tyre share the texture.
+// So the light material name is the ONLY thing separating the tyre from the rim, and any
+// override has to key on it.
 //
-//     eModel::ReplaceLightMaterial(0x22719FA9 MAGSILVER, <the rim colour material>)
+// WHY THE VANILLA REPLACEMENT TABLE CANNOT DO THIS. eModel::AttachReplacementTextureTable puts a
+// table at eModel+0x10 (count at +0x14) and eViewPlatInterface::Render applies it through
+// sub_4905A0, which walks the SOLID's texture slots and swaps a slot whose hash matches an
+// entry's old hash. Keyed by texture hash, applied to the slot. With one shared slot it would
+// repaint the rim along with the tyre. That is the route this file deliberately does not take.
 //
-//   and that function, at 0x48D860, walks a table hanging off the solid:
+// WHERE THE SEPARATION IS. eViewPlatInterface::Render (0x5C5930) draws one mesh at a time, and
+// at 0x5C5A8C it has both halves in hand at once:
 //
-//     eModel  +0x0C -> eSolid
-//     eSolid  +0x1A  byte, how many entries
-//     eSolid  +0x3C  -> entries of 8 bytes: { DWORD NameHash; eLightMaterial* Material; }
+//     movzx edx, byte ptr [esi+1Ch]      ; mesh entry +0x1C = texture index
+//     mov   eax, [esp+10h]               ; eSolid
+//     mov   ecx, [eax+2Ch]               ; the solid's texture table, entries { hash, TextureInfo* }
+//     mov   ebp, [ecx+edx*8+4]           ; <- the TextureInfo this mesh will draw with
+//     ...
+//     mov   al, [esi+20h]                ; mesh entry +0x20 = light material index, 0xFF = none
+//     mov   edx, [eax+3Ch]               ; the solid's light material table, { nameHash, eLightMaterial* }
 //
-//   so aiming one more of those at RUBBER is a single call in a place that already exists.
+// Substituting ebp there is a per material texture override, which is the thing the replacement
+// table cannot express. Mesh entries are the file's 60 byte shading groups, loaded in place: the
+// loop advances by 0x3C, count at [eSolid+0][0x10], array at [eSolid+0][0x14].
 //
-// What is NOT known, and is the whole question: whether an eLightMaterial carries a texture, or
-// only shading. If it carries one, this works as described. If it does not, the texture has to
-// come from the ReplacementTextureEntry table instead, which the fork already has helpers for,
-// and which is keyed by the OLD texture hash and so needs that hash discovered per rim first.
+// THE FIRST ATTEMPT WAS MEASURED WRONG, twice over, and both mistakes are worth keeping written
+// down because they cost a round trip each:
 //
-// Guessing at that would cost a build either way, so this file does not implement the feature. It
-// answers the question:
+//   1. It hooked eModel::ReplaceLightMaterial inside CarRenderInfo::Render only, but the front
+//      end draws through RenderFast. The probe file was never created. That was not evidence
+//      about materials, only about a hook that never ran.
+//
+//   2. Even with all four wheel blocks hooked it would still have proved nothing on a stock car.
+//      Every one of them sits inside "if (CarRenderInfo+0x390 != NULL)", and that slot is the rim
+//      light material, which CarRenderInfo::CarRenderInfo fills from a part's LIGHT_MATERIAL_NAME
+//      attribute (0x6BA02C05) and only for parts with upgrade level >= 1. Stock rims leave it
+//      null and the whole block is skipped.
+//
+// UNVERIFIED: that a TextureInfo from an unrelated pack binds cleanly on a wheel mesh. It is the
+// same pointer type the slot already holds and the same thing sub_4905A0 writes into that slot,
+// so there is no reason for it not to, but it has not been seen on screen yet.
+//
+// SETTINGS. This first cut is deliberately global: every tyre in the game takes the same texture.
+// Once it is confirmed on screen, the hash moves to a part attribute so a trim or a part can pick
+// it per car, which is the same shape LIGHT_MATERIAL_NAME already has.
+//
+//   [Debug] TireTexture = CARBONFIBRE
+//     the texture every RUBBER material draws with. CARBONFIBRE is a good first test because it
+//     is loaded whenever a car is on screen, so nothing has to be authored to see the answer.
 //
 //   [Debug] TireMaterialProbe = 1
-//     dumps each model's light material table once to UnlimiterData\_TireProbe.txt, which says
-//     whether RUBBER is really there at runtime and what it is bound to.
-//
-//   [Debug] TireMaterialSwapFrom = MAGCHROME
-//     points RUBBER at the material some other name on the SAME model is already using. No new
-//     assets, nothing to author. If the tyres turn chrome, a light material decides how a tyre
-//     looks and the feature is a part attribute away. If they do not change at all, the answer
-//     is the texture table and this whole approach is the wrong one.
+//     writes UnlimiterData\_TireProbe.txt: for each solid carrying a RUBBER material, its texture
+//     slots and light material names, once per solid.
 // ---------------------------------------------------------------------------------------------
 
 bool TireMaterialProbe = false;
-DWORD TireMaterialSwapFrom = 0;
+DWORD TireTextureHash = 0;
+
+// The hook reads this one word to decide whether to bother. It is a DWORD because the naked shim
+// tests it, and it covers the probe as well so the probe can run on its own with no texture set.
+DWORD TireHookActive = 0;
 
 #define TIRE_MATERIAL_RUBBER CT_bStringHash("RUBBER")
 
-// eSolid, reached through the model, and its light material table
-#define eModel_Solid(model)          (*(DWORD**)((BYTE*)(model) + 0x0C))
+// eSolid, as the renderer reads it
+#define eSolid_NumTextures(s)        (*(BYTE*)((BYTE*)(s) + 0x19))
 #define eSolid_NumLightMaterials(s)  (*(char*)((BYTE*)(s) + 0x1A))
+#define eSolid_TextureTable(s)       (*(DWORD**)((BYTE*)(s) + 0x2C))
 #define eSolid_LightMaterials(s)     (*(DWORD**)((BYTE*)(s) + 0x3C))
+
+// one 60 byte mesh entry, the runtime face of a shading group
+#define eMesh_TextureIndex(m)        (*(BYTE*)((BYTE*)(m) + 0x1C))
+#define eMesh_LightMaterialIndex(m)  (*(BYTE*)((BYTE*)(m) + 0x20))
 
 void TireProbeLine(const char* fmt, ...)
 {
@@ -84,131 +116,125 @@ bool Tire_ValidPtr(void* p)
 	return v >= 0x00010000 && v <= 0xC0000000 && !(v & 3);
 }
 
-// One line per model, not one per frame. Render calls this three times per wheel per frame, so
-// without a seen list the file is hundreds of megabytes before anyone reads it.
+// One line per solid, not one per mesh per frame. This sits in the renderer's inner loop, so
+// without a seen list the file is hundreds of megabytes before anyone opens it.
 std::vector<DWORD*> TireProbeSeen;
 
-bool Tire_AlreadyProbed(DWORD* Model)
+bool Tire_AlreadyProbed(DWORD* Solid)
 {
 	for (size_t i = 0; i < TireProbeSeen.size(); i++)
-		if (TireProbeSeen[i] == Model) return true;
+		if (TireProbeSeen[i] == Solid) return true;
 
-	if (TireProbeSeen.size() < 64) TireProbeSeen.push_back(Model);
-
-	return false;
-}
-
-std::vector<DWORD*> TireWarned;
-
-bool Tire_AlreadyWarned(DWORD* Model)
-{
-	for (size_t i = 0; i < TireWarned.size(); i++)
-		if (TireWarned[i] == Model) return true;
-
-	if (TireWarned.size() < 64) TireWarned.push_back(Model);
+	if (TireProbeSeen.size() < 128) TireProbeSeen.push_back(Solid);
 
 	return false;
 }
 
-// The material some name on this model is currently bound to, which is how the experiment gets a
-// real eLightMaterial without inventing one.
-DWORD* Tire_MaterialBoundTo(DWORD* Model, DWORD NameHash)
+void Tire_ProbeSolid(DWORD* Solid)
 {
-	if (!Tire_ValidPtr(Model)) return nullptr;
+	if (!TireMaterialProbe) return;
+	if (Tire_AlreadyProbed(Solid)) return;
 
-	DWORD* Solid = eModel_Solid(Model);
-	if (!Tire_ValidPtr(Solid)) return nullptr;
+	int Textures = eSolid_NumTextures(Solid);
+	int Materials = eSolid_NumLightMaterials(Solid);
+	DWORD* TextureTable = eSolid_TextureTable(Solid);
+	DWORD* MaterialTable = eSolid_LightMaterials(Solid);
+
+	TireProbeLine("solid %p: %d texture slot(s), %d light material(s)\n", Solid, Textures, Materials);
+
+	if (Tire_ValidPtr(TextureTable))
+		for (int i = 0; i < Textures && i < 64; i++)
+			TireProbeLine("    texture [%d] hash 0x%08X -> TextureInfo %p\n",
+				i, (unsigned int)TextureTable[i * 2], (void*)TextureTable[i * 2 + 1]);
+
+	if (Tire_ValidPtr(MaterialTable))
+		for (int i = 0; i < Materials && i < 64; i++)
+			TireProbeLine("    light material [%d] 0x%08X%s\n",
+				i, (unsigned int)MaterialTable[i * 2],
+				MaterialTable[i * 2] == TIRE_MATERIAL_RUBBER ? " RUBBER" : "");
+}
+
+bool TireTextureMissingLogged = false;
+
+// Runs for every mesh the game draws while a tyre texture is set, so it gets out of the way as
+// early as it can. The renderer has already worked out the mesh's own TextureInfo; this only
+// decides whether to hand back a different one.
+void* __cdecl Tire_ResolveMeshTexture(DWORD* Solid, BYTE* Mesh, void* Default)
+{
+	BYTE Index = eMesh_LightMaterialIndex(Mesh);
+	if (Index == 0xFF) return Default;
 
 	int Count = eSolid_NumLightMaterials(Solid);
-	DWORD* Entries = eSolid_LightMaterials(Solid);
+	DWORD* Table = eSolid_LightMaterials(Solid);
 
-	if (Count <= 0 || Count > 64 || !Tire_ValidPtr(Entries)) return nullptr;
+	if (Count <= 0 || Index >= Count || !Tire_ValidPtr(Table)) return Default;
+	if (Table[Index * 2] != TIRE_MATERIAL_RUBBER) return Default;
 
-	for (int i = 0; i < Count; i++)
-		if (Entries[i * 2] == NameHash) return (DWORD*)Entries[i * 2 + 1];
+	Tire_ProbeSolid(Solid);
 
-	return nullptr;
+	if (!TireTextureHash) return Default;
+
+	// Resolved every time rather than cached, because a TextureInfo belongs to a pack and packs
+	// come and go with the screen. This only runs for the one or two tyre meshes on a wheel, so
+	// the lookup is not worth caching against a dangling pointer.
+	void* Replacement = GetTextureInfo(TireTextureHash, 1, 0);
+
+	if (!Replacement)
+	{
+		if (!TireTextureMissingLogged)
+		{
+			TireTextureMissingLogged = true;
+			TireProbeLine("TireTexture 0x%08X is not in any pack that is loaded right now,"
+				" so the tyre keeps its own texture.\n", (unsigned int)TireTextureHash);
+		}
+		return Default;
+	}
+
+	return Replacement;
 }
 
-void Tire_ProbeModel(DWORD* Model)
+// Replaces the two instructions that fetch a mesh's TextureInfo, then hands the result to the
+// resolver. ecx, edx and ebp are all reassigned before the renderer reads them again, so only
+// eax has to survive, and it does.
+static constexpr DWORD TireMeshHookReturn = 0x005C5A9B;
+
+__declspec(naked) void Tire_MeshTextureHook()
 {
-	if (!TireMaterialProbe || !Tire_ValidPtr(Model)) return;
-	if (Tire_AlreadyProbed(Model)) return;
-
-	DWORD* Solid = eModel_Solid(Model);
-
-	if (!Tire_ValidPtr(Solid))
+	__asm
 	{
-		TireProbeLine("model %p: no solid\n", Model);
-		return;
-	}
+		mov ecx, [eax + 0x2C];
+		mov ebp, [ecx + edx * 8 + 4];
 
-	int Count = eSolid_NumLightMaterials(Solid);
-	DWORD* Entries = eSolid_LightMaterials(Solid);
+		mov ecx, TireHookActive;
+		test ecx, ecx;
+		je keep;
 
-	TireProbeLine("model %p solid %p: %d light material(s) at %p\n", Model, Solid, Count, Entries);
+		push eax;
+		push edx;
 
-	if (Count <= 0 || Count > 64 || !Tire_ValidPtr(Entries)) return;
+		push ebp;		// the texture this mesh would have drawn with
+		push esi;		// the mesh entry
+		push eax;		// the eSolid
+		call Tire_ResolveMeshTexture;
+		add esp, 0x0C;
 
-	for (int i = 0; i < Count; i++)
-	{
-		DWORD Name = Entries[i * 2];
-		DWORD* Material = (DWORD*)Entries[i * 2 + 1];
+		mov ebp, eax;
 
-		char const* Known =
-			Name == TIRE_MATERIAL_RUBBER      ? " RUBBER" :
-			Name == CT_bStringHash("MAGSILVER")   ? " MAGSILVER" :
-			Name == CT_bStringHash("MAGCHROME")   ? " MAGCHROME" :
-			Name == CT_bStringHash("MAGGUNMETAL") ? " MAGGUNMETAL" :
-			Name == CT_bStringHash("CARSKIN")     ? " CARSKIN" : "";
+		pop edx;
+		pop eax;
 
-		TireProbeLine("    [%2d] 0x%08X%s -> %p\n", i, (unsigned int)Name, Known, Material);
+	keep:
+		jmp TireMeshHookReturn;
 	}
 }
 
-// Wraps the first of the three rim colour calls in the front wheel block, which is a place that
-// already holds the wheel model and runs once per wheel per frame.
-void __fastcall Tire_ReplaceLightMaterial(DWORD* Model, void* EDX_Unused, int NameHash, int Material)
-{
-	Tire_ProbeModel(Model);
-
-	// The experiment. RUBBER is pointed at whatever material the named one on this same model is
-	// using, so nothing has to be authored to find out whether a light material is what decides
-	// how a tyre looks.
-	if (TireMaterialSwapFrom)
-	{
-		DWORD* Source = Tire_MaterialBoundTo(Model, TireMaterialSwapFrom);
-
-		if (Source) eModel_ReplaceLightMaterial_Game(Model, TIRE_MATERIAL_RUBBER, (int)Source);
-		else if (!Tire_AlreadyWarned(Model))
-			TireProbeLine("model %p: TireMaterialSwapFrom 0x%08X is not a material on this model,"
-				" nothing to copy. The probe lines above list the names it does have.\n",
-				Model, (unsigned int)TireMaterialSwapFrom);
-	}
-
-	eModel_ReplaceLightMaterial_Game(Model, NameHash, Material);
-}
-
-// THE CAR IS DRAWN BY RenderFast, NOT BY Render. The first cut of this hooked only the front
-// wheel block inside CarRenderInfo::Render and the probe file was never even created, which
-// was not evidence about light materials, only about the hook never running.
-//
-// There are four wheel blocks, each opening with the same push of MAGSILVER:
-//
-//     0x617979  RenderFast, front wheel
-//     0x6179C6  RenderFast, rear wheel
-//     0x6277B1  Render,     front wheel
-//     0x62782E  Render,     rear wheel
-//
-// All four, because which one runs depends on the screen and being wrong about that is what
-// wasted the first attempt.
 void InitTireMaterial()
 {
-	if (!TireMaterialProbe && !TireMaterialSwapFrom) return;
+	TireHookActive = (TireTextureHash || TireMaterialProbe) ? 1 : 0;
+	if (!TireHookActive) return;
 
-	// Call sites, so the original stays callable and no prologue has to be replayed.
-	injector::MakeCALL(0x617979, Tire_ReplaceLightMaterial, true); // RenderFast, front
-	injector::MakeCALL(0x6179C6, Tire_ReplaceLightMaterial, true); // RenderFast, rear
-	injector::MakeCALL(0x6277B1, Tire_ReplaceLightMaterial, true); // Render, front
-	injector::MakeCALL(0x62782E, Tire_ReplaceLightMaterial, true); // Render, rear
+	// eViewPlatInterface::Render, the per mesh texture fetch. Seven bytes are replaced:
+	// mov ecx, [eax+2Ch] (3) and mov ebp, [ecx+edx*8+4] (4). The hook does both itself and
+	// returns past them, so the two bytes after the jump are simply unreachable.
+	injector::MakeJMP(0x005C5A94, Tire_MeshTextureHook, true);
 }
