@@ -141,6 +141,7 @@ copy "$(TargetDir)*.pdb" "G:\Oyunlar\Need for Speed Underground 2 Dirty\scripts"
     <ClInclude Include="bReleasePrintf.h" />
     <ClInclude Include="BuyPerformanceParts.h" />
     <ClInclude Include="BuyPerfPartWidget.h" />
+    <ClInclude Include="BigFileVFS.h" />
     <ClInclude Include="bVector.h" />
     <ClInclude Include="CameraInfo.h" />
     <ClInclude Include="CarCustomizeManager.h" />

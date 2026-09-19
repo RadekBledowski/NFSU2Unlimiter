@@ -71,6 +71,7 @@ char AttachmentNameBuf[64];
 #include "PresetCars.h"
 #include "Helpers.h"
 #include "CarSoundTuner.h"
+#include "BigFileVFS.h"
 #include "UnlimiterData.h"
 #include "CodeCaves.h"
 #include "Game.h"
@@ -105,6 +106,7 @@ int Init()
 	// Sound
 	CarSoundTunerEnabled = mINI_ReadInteger(Settings, "Sound", "CarSoundTuner", 1) != 0;
 	BigFileVFSHandlePoolSize = mINI_ReadInteger(Settings, "Sound", "BigFileVFSHandlePoolSize", 64);
+	SerialiseBigFileVFS = mINI_ReadInteger(Settings, "Sound", "SerialiseBigFileVFS", 1) != 0;
 	SkipLegacyCSTCheck = mINI_ReadInteger(Settings, "Sound", "SkipLegacyCSTCheck", 0) != 0;
 	ForceUpgradeFromLegacyCST = mINI_ReadInteger(Settings, "Sound", "UpgradeFromLegacyCST", 0) != 0;
 	ExportCarSoundData = mINI_ReadInteger(Settings, "Sound", "ExportCarSoundData", 0) != 0;
@@ -688,6 +690,8 @@ int Init()
 	if (BigFileVFSHandlePoolSize > 127) BigFileVFSHandlePoolSize = 64;
 	injector::WriteMemory<BYTE>(0x486531, BigFileVFSHandlePoolSize, true);
 	injector::WriteMemory<BYTE>(0x486541, BigFileVFSHandlePoolSize, true);
+
+	InitBigFileVFS();
 
 	if (CarSoundTunerEnabled)
 	{
