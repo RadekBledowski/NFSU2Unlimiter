@@ -245,12 +245,33 @@ void __cdecl Tire_SetCurrentCar(DWORD* CarRenderInfo)
 	TireCurrentTexture = Hash ? GetTextureInfo(Hash, 1, 0) : nullptr;
 	TireHookLive = (TireCurrentTexture || TireMaterialProbe) ? 1 : 0;
 
-	if (Hash && !TireCurrentTexture && !TireTextureMissingLogged)
+	// Saying nothing when the hash is zero was a hole: a car with no tyre part and a tyre part with
+	// no TEXTURE_NAME both left the probe silent, and a silent log looks the same as a texture that
+	// simply is not loaded. Each of the three gets its own line now, once each.
+	if (!TireTextureMissingLogged && RideInfo && !TireTextureOverride)
 	{
-		TireTextureMissingLogged = true;
-		TireProbeLine("tyre texture 0x%08X is in no pack that is loaded right now, so the tyre keeps"
-			" its own texture. The texture has to reach the car the way a vinyl or a rim texture"
-			" does.\n", (unsigned int)Hash);
+		DWORD* Part = (DWORD*)RideInfo[356 + TIRE_CAR_SLOT];
+
+		if (!Part)
+		{
+			TireTextureMissingLogged = true;
+			TireProbeLine("no tyre part is installed in slot %d, so there is nothing to take a"
+				" texture from. Fit one from the Tires category first.\n", TIRE_CAR_SLOT);
+		}
+		else if (!Hash)
+		{
+			TireTextureMissingLogged = true;
+			TireProbeLine("the tyre part in slot %d carries no TEXTURE_NAME attribute, so it names"
+				" no texture. The part needs TEXTURE_NAME the way a rim part does, pointing at the"
+				" texture to draw.\n", TIRE_CAR_SLOT);
+		}
+		else if (!TireCurrentTexture)
+		{
+			TireTextureMissingLogged = true;
+			TireProbeLine("tyre texture 0x%08X is in no pack that is loaded right now, so the tyre"
+				" keeps its own texture. The texture has to reach the car the way a vinyl or a rim"
+				" texture does.\n", (unsigned int)Hash);
+		}
 	}
 }
 
