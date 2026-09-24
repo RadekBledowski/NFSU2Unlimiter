@@ -194,59 +194,108 @@ bool Tire_IsPartListable(DWORD* Part, int Slot)
 
 bool TireTextureMissingLogged = false;
 
-// A paintable tyre takes its colour from the part in WHEEL_MANUFACTURER, which is the same part
-// the tyre smoke reads RED, GREEN and BLUE from, so the tyre and the smoke are in step by
-// construction. CompositeWheel is handed that slot and reads the part itself: [ride+slot*4+590h]
-// at 0x61DF0A, then RED, GREEN, BLUE and GLOSS off it, packed into one colour.
+// PAINTABLE TYRES, coloured the way vinyls are.
 //
-// The mask is the texture's own name with _MASK after it. bStringHash is a fold, so
-// bStringHash2("_MASK", h) is the hash of the original string with _MASK appended, without the
-// string ever being known. TIRE_PAINTABLE hashes to A2BEB302 and TIRE_PAINTABLE_MASK to A07354CD.
+// A vinyl is a channel mix. CompositeSkin builds four colours per vinyl layer, one per texture
+// channel, and when no colour has been chosen for a channel it fills in that channel's own pure
+// colour (0x61DC8F, 0xFF shifted by 0, 8, 16 and 24), so an unpainted vinyl mixes back into exactly
+// what was authored. Red in the texture becomes colour one, green colour two, and so on, with the
+// strength of the channel as the shade. A tyre has one colour to offer, so only red is remapped and
+// green and blue stay themselves: author the stripe in red, and shades of red come out as shades of
+// the colour.
 //
-// ALL THREE TEXTURES HAVE TO BE 32 BIT. CompositeWheel picks its algorithm from the format byte at
-// TextureInfo+4Ah, 0x20 meaning 32 bit, and demands the same answer from all three (0x61DFC5 to
-// 0x61DFEA), along with identical width and height:
+// The colour is the part in WHEEL_MANUFACTURER, the one the tyre smoke reads RED, GREEN and BLUE
+// from, so the two are in step by construction. VINYL_L1_COLOR01 counts as none, the same as in
+// ApplyTireSmokeColor, and none leaves the tyre as authored.
 //
-//   all 32 bit   sub_612EE0  per pixel. Mask intensity 0 copies the source pixel unchanged, so the
-//                            tyre keeps whatever tint it was authored with. Anything above 0 blends
-//                            towards source x colour / 255 by that intensity (sub_611A30 multiplies
-//                            channel by channel), so a white stripe comes out exactly the smoke
-//                            colour and a grey one a darker shade of it.
-//   anything else sub_612D10 the palette path, written for 8 bit paletted rims. It locks the three
-//                            palettes and rebuilds 256 entries as a 16 x 16 grid of source colour
-//                            against mask level, and never touches the image. On a DXT texture that
-//                            is simply the wrong algorithm, which is what turned the tyre grey and
-//                            took the stripe with it.
+// Where the mix applies is <TEXTURE>_MASK, a greyscale coverage map like a vinyl's own mask: black
+// keeps the texture, white takes the mix, grey blends. Without the mask the rubber would be mixed
+// as well, and grey rubber has a red component. bStringHash2("_MASK", h) builds the mask's hash from
+// the texture's, since bStringHash is a fold: TIRE_PAINTABLE is A2BEB302, TIRE_PAINTABLE_MASK
+// A07354CD.
 //
-// So a tyre that is not 32 bit is left alone rather than handed to the palette path.
+// BOTH HAVE TO BE 32 BIT AND THE SAME SIZE. Only 32 bit texture memory is a plain array of pixels.
+// The game creates those as D3DFMT_A8R8G8B8 in D3DPOOL_MANAGED (format 15h pushed to CreateTexture
+// at 0x5CE2A4), so a pixel in memory is blue, green, red, alpha, with red in the third byte.
 //
-// The composite writes into the texture it reads from, and the tint is a multiply, so compositing
-// twice multiplies twice: every change of colour would darken the stripe further until it vanished
-// into the rubber. The untouched pixels are kept the first time a texture is seen and put back
-// before every composite, which is what a separate destination texture would otherwise be for.
+// CompositeWheel is not used for this, for three reasons. Its 32 bit path pairs RED with the
+// pixel's first byte, which is blue, so it would recolour the wrong channel. It multiplies rather
+// than mixing channels, so a red stripe times a blue colour goes black instead of blue. And it locks
+// its source and destination separately, and a D3D surface that is already locked cannot be locked
+// again, so one texture cannot be both.
+//
+// The pass writes over the texture it reads, so the untouched pixels are kept the first time a
+// texture is seen and every pass starts from them. Otherwise each colour change would mix the
+// previous result again.
+//
+// Locking goes straight to the texture's own vtable, LockRect at +4Ch and UnlockRect at +50h, the
+// same calls TextureInfoPlatInterface::LockImage (0x5B96A0) and sub_5B96D0 make. The game's wrapper
+// throws away both the HRESULT and the row pitch; this needs the first to know the pointer is real
+// and the second to walk rows correctly.
 
 #define TireTex_Format(t)  (*(BYTE*)((BYTE*)(t) + 0x4A))
 #define TireTex_Width(t)   (*(short*)((BYTE*)(t) + 0x44))
 #define TireTex_Height(t)  (*(short*)((BYTE*)(t) + 0x46))
+#define TireTex_Mips(t)    (*(char*)((BYTE*)(t) + 0x4E))
 #define TIRE_TEXTURE_32BIT 0x20
 
-// TextureInfoPlatInterface::LockImage, retn 4. 1 is the lock CompositeWheel takes on the texture
-// it writes into, 0 the one it takes on those it only reads.
-void* (__thiscall* TireTex_LockImage)(void* TextureInfo, int LockType) = (void* (__thiscall*)(void*, int))0x5B96A0;
+struct TireLockedRect { int Pitch; BYTE* Bits; };
+
+void* Tire_D3DTexture(void* TextureInfo)
+{
+	if (!Tire_ValidPtr(TextureInfo)) return nullptr;
+
+	BYTE* Plat = *(BYTE**)TextureInfo;
+
+	if (!Tire_ValidPtr(Plat)) return nullptr;
+
+	void* Texture = *(void**)(Plat + 0x18);
+
+	return Tire_ValidPtr(Texture) ? Texture : nullptr;
+}
+
+bool Tire_Lock(void* Texture, TireLockedRect& Rect)
+{
+	typedef long(__stdcall* LockRectFn)(void*, unsigned int, TireLockedRect*, const void*, unsigned long);
+
+	Rect.Pitch = 0;
+	Rect.Bits = nullptr;
+
+	long hr = ((LockRectFn)(*(void***)Texture)[0x4C / 4])(Texture, 0, &Rect, nullptr, 0);
+
+	return hr >= 0 && Rect.Bits && Rect.Pitch > 0;
+}
+
+void Tire_Unlock(void* Texture)
+{
+	typedef long(__stdcall* UnlockRectFn)(void*, unsigned int);
+
+	((UnlockRectFn)(*(void***)Texture)[0x50 / 4])(Texture, 0);
+}
 
 struct TirePristine
 {
-	void* Texture;
+	void* TextureInfo;
 	DWORD Hash;
-	int Bytes;
-	std::vector<BYTE> Pixels;
+	int Width, Height;
+	std::vector<DWORD> Pixels; // tightly packed rows
 };
 
 std::vector<TirePristine> TirePristineCopies;
 
 void* TireLastPaintedTexture = nullptr;
 DWORD* TireLastPaintPart = nullptr;
-bool TirePaintFormatLogged = false;
+bool TirePaintProblemLogged = false;
+
+void Tire_PaintLogOnce(const char* fmt, DWORD Hash, int A, int B)
+{
+	if (TirePaintProblemLogged) return;
+
+	TirePaintProblemLogged = true;
+	TireProbeLine(fmt, (unsigned int)Hash, A, B);
+}
+
+static inline int TireClamp(int v) { return v < 0 ? 0 : (v > 255 ? 255 : v); }
 
 void Tire_PaintIfWanted(DWORD* RideInfo, DWORD TextureHash)
 {
@@ -257,60 +306,120 @@ void Tire_PaintIfWanted(DWORD* RideInfo, DWORD TextureHash)
 	if (!Tire_ValidPtr(Part)) return;
 	if (!CarPart_GetAppliedAttributeUParam(Part, TIRE_ATTR_PAINTABLE, 0)) return;
 
-	DWORD MaskHash = bStringHash2("_MASK", TextureHash);
+	void* TexInfo = GetTextureInfo(TextureHash, 0, 0);
+	void* MaskInfo = GetTextureInfo(bStringHash2("_MASK", TextureHash), 0, 0);
 
-	// The same lookup CompositeWheel makes, so these are the very textures it will lock.
-	void* Texture = GetTextureInfo(TextureHash, 0, 0);
-	void* Mask = GetTextureInfo(MaskHash, 0, 0);
+	if (!TexInfo || !MaskInfo) return; // PAINTABLE without a mask stays a plain tyre
 
-	if (!Texture || !Mask) return; // no mask means a plain tyre, not an error
-
-	if (TireTex_Format(Texture) != TIRE_TEXTURE_32BIT || TireTex_Format(Mask) != TIRE_TEXTURE_32BIT)
+	if (TireTex_Format(TexInfo) != TIRE_TEXTURE_32BIT || TireTex_Format(MaskInfo) != TIRE_TEXTURE_32BIT)
 	{
-		if (!TirePaintFormatLogged)
-		{
-			TirePaintFormatLogged = true;
-			TireProbeLine("paintable tyre 0x%08X skipped: the texture is format 0x%02X and its mask"
-				" 0x%02X, and both have to be 0x20, 32 bit. Anything else goes through the palette"
-				" path at 0x612D10, which rewrites a palette and never the image.\n",
-				(unsigned int)TextureHash, TireTex_Format(Texture), TireTex_Format(Mask));
-		}
+		Tire_PaintLogOnce("paintable tyre 0x%08X skipped: texture format %d and mask format %d, both"
+			" have to be 32 bit.\n", TextureHash, TireTex_Format(TexInfo), TireTex_Format(MaskInfo));
 		return;
 	}
 
-	DWORD* PaintPart = (DWORD*)RideInfo[356 + CARSLOTID_WHEEL_MANUFACTURER];
+	int W = TireTex_Width(TexInfo), H = TireTex_Height(TexInfo);
 
-	// Compositing writes pixels, so it is only redone when something it depends on has changed.
-	// The texture's own pointer is part of that: a pack that was unloaded and loaded again hands
-	// back fresh pixels at a new address, and those need painting too.
-	if (Texture == TireLastPaintedTexture && PaintPart == TireLastPaintPart) return;
+	if (W <= 0 || H <= 0 || W != TireTex_Width(MaskInfo) || H != TireTex_Height(MaskInfo))
+	{
+		Tire_PaintLogOnce("paintable tyre 0x%08X skipped: texture is %d wide and the mask %d, the"
+			" two have to match in both directions.\n", TextureHash, W, TireTex_Width(MaskInfo));
+		return;
+	}
 
-	int Bytes = TireTex_Width(Texture) * TireTex_Height(Texture) * 4;
+	DWORD* ColourPart = (DWORD*)RideInfo[356 + CARSLOTID_WHEEL_MANUFACTURER];
 
-	if (Bytes <= 0) return;
+	// Only redo it when something it depends on has changed. The texture pointer is part of that:
+	// a pack unloaded and loaded again hands back fresh pixels at a new address.
+	if (TexInfo == TireLastPaintedTexture && ColourPart == TireLastPaintPart) return;
 
-	BYTE* Pixels = (BYTE*)TireTex_LockImage(Texture, 1);
+	void* Tex = Tire_D3DTexture(TexInfo);
+	void* Mask = Tire_D3DTexture(MaskInfo);
 
-	if (!Pixels) return;
+	if (!Tex || !Mask) return;
+
+	TireLockedRect TexRect, MaskRect;
+
+	if (!Tire_Lock(Tex, TexRect))
+	{
+		Tire_PaintLogOnce("paintable tyre 0x%08X skipped: the texture would not lock.\n", TextureHash, 0, 0);
+		return;
+	}
+
+	if (!Tire_Lock(Mask, MaskRect))
+	{
+		Tire_Unlock(Tex);
+		Tire_PaintLogOnce("paintable tyre 0x%08X skipped: its mask would not lock.\n", TextureHash, 0, 0);
+		return;
+	}
 
 	TirePristine* Copy = nullptr;
 
 	for (auto& C : TirePristineCopies)
-		if (C.Texture == Texture && C.Hash == TextureHash && C.Bytes == Bytes) { Copy = &C; break; }
+		if (C.TextureInfo == TexInfo && C.Hash == TextureHash && C.Width == W && C.Height == H) { Copy = &C; break; }
 
 	if (!Copy)
 	{
-		TirePristineCopies.push_back({ Texture, TextureHash, Bytes, std::vector<BYTE>(Pixels, Pixels + Bytes) });
+		TirePristineCopies.push_back({ TexInfo, TextureHash, W, H, std::vector<DWORD>((size_t)W * H) });
+		Copy = &TirePristineCopies.back();
+
+		for (int y = 0; y < H; y++)
+			memcpy(&Copy->Pixels[(size_t)y * W], TexRect.Bits + (size_t)y * TexRect.Pitch, (size_t)W * 4);
 	}
-	else
+
+	// No colour, or the unused first entry, is the vinyl identity: red stays red.
+	int CR = 255, CG = 0, CB = 0;
+
+	if (Tire_ValidPtr(ColourPart) && ColourPart[0] != CT_bStringHash("VINYL_L1_COLOR01"))
 	{
-		memcpy(Pixels, Copy->Pixels.data(), Bytes);
+		CR = TireClamp(CarPart_GetAppliedAttributeUParam(ColourPart, CT_bStringHash("RED"), 0));
+		CG = TireClamp(CarPart_GetAppliedAttributeUParam(ColourPart, CT_bStringHash("GREEN"), 0));
+		CB = TireClamp(CarPart_GetAppliedAttributeUParam(ColourPart, CT_bStringHash("BLUE"), 0));
 	}
 
-	TireLastPaintedTexture = Texture;
-	TireLastPaintPart = PaintPart;
+	for (int y = 0; y < H; y++)
+	{
+		const DWORD* Src = &Copy->Pixels[(size_t)y * W];
+		DWORD* Dst = (DWORD*)(TexRect.Bits + (size_t)y * TexRect.Pitch);
+		const DWORD* M = (const DWORD*)(MaskRect.Bits + (size_t)y * MaskRect.Pitch);
 
-	CompositeWheel(RideInfo, TextureHash, TextureHash, MaskHash, CARSLOTID_WHEEL_MANUFACTURER);
+		for (int x = 0; x < W; x++)
+		{
+			DWORD P = Src[x];
+
+			// A8R8G8B8 in memory: blue, green, red, alpha
+			int b = P & 0xFF, g = (P >> 8) & 0xFF, r = (P >> 16) & 0xFF;
+
+			DWORD MP = M[x];
+			int mb = MP & 0xFF, mg = (MP >> 8) & 0xFF, mr = (MP >> 16) & 0xFF;
+			int Cover = mr > mg ? (mr > mb ? mr : mb) : (mg > mb ? mg : mb); // greyscale, any channel
+
+			if (!Cover) { Dst[x] = P; continue; }
+
+			// The vinyl mix with only the first colour set: red becomes the colour, scaled by how red
+			// the pixel was, and green and blue carry on as themselves.
+			int nr = TireClamp(r * CR / 255);
+			int ng = TireClamp(r * CG / 255 + g);
+			int nb = TireClamp(r * CB / 255 + b);
+
+			nr = r + (nr - r) * Cover / 255;
+			ng = g + (ng - g) * Cover / 255;
+			nb = b + (nb - b) * Cover / 255;
+
+			Dst[x] = (P & 0xFF000000) | ((DWORD)nr << 16) | ((DWORD)ng << 8) | (DWORD)nb;
+		}
+	}
+
+	Tire_Unlock(Mask);
+	Tire_Unlock(Tex);
+
+	TireLastPaintedTexture = TexInfo;
+	TireLastPaintPart = ColourPart;
+
+	if (TireTex_Mips(TexInfo) > 1)
+		Tire_PaintLogOnce("paintable tyre 0x%08X has %d mip levels and only the first is painted, so"
+			" the stripe shows its authored red from further away. Author it with one level.\n",
+			TextureHash, TireTex_Mips(TexInfo), 0);
 }
 
 // Once per car per frame, off the front of CarRenderInfo::Render and RenderFast. Resolving here
