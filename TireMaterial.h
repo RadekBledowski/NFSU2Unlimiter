@@ -79,6 +79,7 @@
 
 #define TIRE_MATERIAL_RUBBER    CT_bStringHash("RUBBER")        // 0x78743CA1
 #define TIRE_ATTR_TEXTURE_NAME  CT_bStringHash("TEXTURE_NAME")  // 0x10C98090
+#define TIRE_ATTR_PAINTABLE     CT_bStringHash("PAINTABLE")     // 0x0EF2522F
 
 #define _DefaultSlotTypeNameTable 0x8A1CE8
 
@@ -192,12 +193,54 @@ bool Tire_IsPartListable(DWORD* Part, int Slot)
 
 bool TireTextureMissingLogged = false;
 
+// A paintable tyre takes its colour from the part in WHEEL_MANUFACTURER, which is the same part
+// the tyre smoke reads RED, GREEN and BLUE from, so the tyre and the smoke are in step by
+// construction rather than by anything here keeping them so. CompositeWheel is handed that slot and
+// does the reading itself, at 0x61DF01 onwards.
+//
+// The mask is the texture's own name with _MASK after it. bStringHash is a fold, so continuing it
+// with bStringHash2 appends to a name that is only known as a hash: bStringHash2("_MASK", h) is the
+// hash of the original string with _MASK on the end. Confirmed against the authored data,
+// TIRE_PAINTABLE hashing to A2BEB302 and TIRE_PAINTABLE_MASK to A07354CD.
+//
+// A tyre without the attribute, or without a mask, is left alone. CompositeWheel returns at
+// 0x61DEAD and 0x61DEFB when a texture it was handed is not loaded, so a missing mask costs a
+// lookup and nothing else.
+
+DWORD TireLastPaintedTexture = 0;
+DWORD* TireLastPaintPart = nullptr;
+
+void Tire_PaintIfWanted(DWORD* RideInfo, DWORD TextureHash)
+{
+	if (!TextureHash || !Tire_ValidPtr(RideInfo)) return;
+
+	DWORD* Part = (DWORD*)RideInfo[356 + TIRE_CAR_SLOT];
+
+	if (!Tire_ValidPtr(Part)) return;
+	if (!CarPart_GetAppliedAttributeUParam(Part, TIRE_ATTR_PAINTABLE, 0)) return;
+
+	DWORD* PaintPart = (DWORD*)RideInfo[356 + CARSLOTID_WHEEL_MANUFACTURER];
+
+	// Compositing writes pixels, so doing it once per car per frame would be paid every frame for
+	// nothing. Only redo it when the tyre or the colour behind it has actually changed.
+	if (TextureHash == TireLastPaintedTexture && PaintPart == TireLastPaintPart) return;
+
+	TireLastPaintedTexture = TextureHash;
+	TireLastPaintPart = PaintPart;
+
+	CompositeWheel(RideInfo, TextureHash, TextureHash,
+		bStringHash2("_MASK", TextureHash), CARSLOTID_WHEEL_MANUFACTURER);
+}
+
 // Once per car per frame, off the front of CarRenderInfo::Render and RenderFast. Resolving here
 // rather than per mesh keeps the lookup out of the inner loop, and resolving every frame rather
 // than caching keeps the pointer honest: a TextureInfo belongs to a pack and packs come and go.
 void __cdecl Tire_SetCurrentCar(DWORD* CarRenderInfo)
 {
-	DWORD Hash = Tire_ValidPtr(CarRenderInfo) ? Tire_TextureHashForRide((DWORD*)CarRenderInfo[1]) : 0;
+	DWORD* RideInfo = Tire_ValidPtr(CarRenderInfo) ? (DWORD*)CarRenderInfo[1] : nullptr;
+	DWORD Hash = RideInfo ? Tire_TextureHashForRide(RideInfo) : 0;
+
+	Tire_PaintIfWanted(RideInfo, Hash);
 
 	TireCurrentTexture = Hash ? GetTextureInfo(Hash, 1, 0) : nullptr;
 	TireHookLive = (TireCurrentTexture || TireMaterialProbe) ? 1 : 0;
