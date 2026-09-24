@@ -50,7 +50,6 @@ void PartSelectionScreen_AddCategoryChecked(DWORD* PSS, unsigned int CarSlotID, 
 void __fastcall PartSelectionScreen_SetupBodyShop(DWORD* PartSelectionScreen, void* EDX_Unused)
 {
     RideInfo_UpdatePartsEnabled((DWORD*)gTheRideInfo, nullptr);
-    PartLinkTraceCategories();
 
     // Read Part Options for the car
     DWORD FECarConfig = *(DWORD*)_FECarConfigRef;

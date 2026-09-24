@@ -161,14 +161,6 @@ int Init()
 	ExportCameraInfoIni = mINI_ReadInteger(Settings, "Debug", "ExportCameraInfo", 0) != 0;
 	EnableReleasePrintf = mINI_ReadInteger(Settings, "Debug", "EnableReleasePrintf", EnableReleasePrintf) != 0;
 
-	// Trace
-	PartLinkTrace = mINI_ReadInteger(Settings, "Trace", "PartLinkTrace", 0) != 0;
-	TireMaterialProbe = mINI_ReadInteger(Settings, "Trace", "TireMaterialProbe", 0) != 0;
-
-	// Read as a string first, for the same reason as TirePartsCollection above.
-	char* TireTextureName = mINI_ReadString(Settings, "Debug", "TireTexture", "");
-	TireTextureOverride = (TireTextureName && TireTextureName[0]) ? bStringHash(TireTextureName) : 0;
-
 	// Count Cars Automatically
 	injector::WriteMemory(0x7FA898, &LoaderCarInfo_Hook, true); // LoaderTable
 
