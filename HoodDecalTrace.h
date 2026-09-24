@@ -152,9 +152,11 @@ void HoodDecalTraceDump(DWORD* RideInfo)
 	for (int i = 0; i < 8 && !AnyTex; i++)
 		if (RideInfo[356 + CARSLOTID_DECAL_HOOD_TEX0 + i]) AnyTex = true;
 
-	// A stock hood with no decal on it is the resting state and there are hundreds of those. Only
-	// say something when a hood decal is involved or the hood is not the stock one.
-	bool Interesting = Layout || AnyTex || (Hood && (*((BYTE*)Hood + 5) >> 5) > 0);
+	// The car lot alone produced four hundred dumps of starter cars sitting on their stock hoods
+	// with the shared layout installed and no texture, which is the resting state and says nothing.
+	// Narrow it to the case in question: a hood that is not the stock one, or a decal texture that
+	// is actually installed.
+	bool Interesting = AnyTex || (Hood && (*((BYTE*)Hood + 5) >> 5) > 0);
 
 	if (!Interesting) return;
 
