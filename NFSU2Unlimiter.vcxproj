@@ -177,7 +177,6 @@ copy "$(TargetDir)*.pdb" "G:\Oyunlar\Need for Speed Underground 2 Dirty\scripts"
     <ClInclude Include="DetailsPane.h" />
     <ClInclude Include="DialogInterface.h" />
     <ClInclude Include="eLightFlare.h" />
-    <ClInclude Include="EngineBankTrace.h" />
     <ClInclude Include="EngineSFXGuard.h" />
     <ClInclude Include="ePositionMarker.h" />
     <ClInclude Include="FeCarLimits.h" />
@@ -192,7 +191,6 @@ copy "$(TargetDir)*.pdb" "G:\Oyunlar\Need for Speed Underground 2 Dirty\scripts"
     <ClInclude Include="IceCategoryTrunkThing.h" />
     <ClInclude Include="IcePartsBrowser.h" />
     <ClInclude Include="IceSelectionScreen.h" />
-    <ClInclude Include="HoodDecalTrace.h" />
     <ClInclude Include="InGameFunctions.h" />
     <ClInclude Include="InGameTypes.h" />
     <ClInclude Include="LoadedSkin.h" />

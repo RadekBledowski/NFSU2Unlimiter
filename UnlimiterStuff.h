@@ -73,7 +73,6 @@ char AttachmentNameBuf[64];
 #include "CarSoundTuner.h"
 #include "BigFileVFS.h"
 #include "EngineSFXGuard.h"
-#include "EngineBankTrace.h"
 #include "AIEngineBank.h"
 #include "UnlimiterData.h"
 #include "CodeCaves.h"
@@ -158,9 +157,6 @@ int Init()
 
 	// Trace
 	PartLinkTrace = mINI_ReadInteger(Settings, "Trace", "PartLinkTrace", 0) != 0;
-	EngineBankTrace = mINI_ReadInteger(Settings, "Trace", "EngineBankTrace", 0) != 0;
-	GarageFilterTrace = mINI_ReadInteger(Settings, "Trace", "GarageFilterTrace", 0) != 0;
-	HoodDecalTrace = mINI_ReadInteger(Settings, "Trace", "HoodDecalTrace", 0) != 0;
 
 	// Count Cars Automatically
 	injector::WriteMemory(0x7FA898, &LoaderCarInfo_Hook, true); // LoaderTable
@@ -722,9 +718,6 @@ int Init()
 
 	InitPresetCars();
 	InitEngineSFXGuard();
-	InitHoodDecalTrace();
-
-	InitEngineBankTrace();
 	InitAIEngineBank();
 	
 	if (BigFileVFSHandlePoolSize > 127) BigFileVFSHandlePoolSize = 64;
