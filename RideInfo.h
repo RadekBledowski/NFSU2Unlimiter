@@ -2,8 +2,15 @@
 #include "InGameFunctions.h"
 #include "PartLink.h"
 
-bool AllowExcludedDecals = false;
-bool KeepHoodDecals = true;
+// Two separate things in the game stop a hood decal appearing once a non stock hood is fitted, and
+// either alone is enough, so they are one switch. RideInfo_UpdatePartsEnabled hides the slot named
+// by the hood's EXCLUDEDECAL attribute, and CarCustomizeManager::InstallPart calls
+// UninstallHoodDecals for any hood above tier 0. Off puts both back, which is EA's behaviour.
+//
+// This does not position anything. Slot 52 is a model slot, so a decal layout is a mesh with its
+// place baked in, authored against the stock hood. On a raised hood the shared plate can end up
+// inside it, and only a per style mesh fixes that.
+bool HoodDecalsOnCustomHoods = true;
 
 void __declspec(naked) BuildRandomRideCodeCave()
 {
@@ -205,7 +212,7 @@ void __fastcall RideInfo_UpdatePartsEnabled(DWORD* RideInfo, void* EDX_Unused)
         if (TheCarPart)
         {
             // Hide excluded decal layout parts
-			int ExcludeDecalSlot = AllowExcludedDecals ? -1 : CarPart_GetExcludeDecal(TheCarPart, EDX_Unused);
+			int ExcludeDecalSlot = HoodDecalsOnCustomHoods ? -1 : CarPart_GetExcludeDecal(TheCarPart, EDX_Unused);
 			if (ExcludeDecalSlot != -1 && ExcludeDecalSlot != CARSLOTID_PAINT_SPOILER)
 				*((BYTE*)RideInfo + 2104 + ExcludeDecalSlot) = 0;
         }

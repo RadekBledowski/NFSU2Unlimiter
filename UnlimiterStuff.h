@@ -119,15 +119,13 @@ int Init()
 	// Misc
 	ExpandMemoryPools = mINI_ReadInteger(Settings, "Misc", "ExpandMemoryPools", 1) != 0;
 	AddOnOpponentsPartsFix = mINI_ReadInteger(Settings, "Misc", "ForceStockPartsOnAddOnOpponents", 0) != 0;
-	ExtendFeCarLimits = mINI_ReadInteger(Settings, "Misc", "ExtendFeCarLimits", 0) != 0;// Doubles the amount of stock and tuned cars a player can have in a profile.
+	ExtendFeCarLimits = mINI_ReadInteger(Settings, "Misc", "ExtendFeCarLimits", 1) != 0;// Doubles the amount of stock and tuned cars a player can have in a profile.
 	StaticCameraGenericFallback = mINI_ReadInteger(Settings, "Misc", "StaticCameraGenericFallback", 1) != 0;
 	SortStockCarsByStage = mINI_ReadInteger(Settings, "Misc", "SortStockCarsByStage", 0) != 0;
 	FilterDecalsByInitials = Clamp(mINI_ReadInteger(Settings, "Misc", "FilterDecalsByInitials", 1), 0, 2);
-	AllowExcludedDecals = mINI_ReadInteger(Settings, "Misc", "AllowExcludedDecals", 0) != 0;
-	KeepHoodDecals = mINI_ReadInteger(Settings, "Misc", "KeepHoodDecals", 1) != 0;
+	HoodDecalsOnCustomHoods = mINI_ReadInteger(Settings, "Misc", "HoodDecalsOnCustomHoods", 1) != 0;
 	GarageShowsOwnedPartsOnly = mINI_ReadInteger(Settings, "Misc", "GarageShowsOwnedPartsOnly", 0) != 0;
 	ShowDebugCarCustomize = mINI_ReadInteger(Settings, "Misc", "ShowDebugCarCustomize", 0) != 0;
-	ChargeForGauges = mINI_ReadInteger(Settings, "Misc", "ChargeForGauges", 1) != 0;
 
 	if (!ShowDebugCarCustomize && GetModuleHandleA("NFSU2ExtraOptions.asi")) // Also check ExOpts
 	{
@@ -519,7 +517,7 @@ int Init()
 		// TODO: Also check ChooseSpinnerBrand or find a smarter way to do this shit
 	}
 
-	if (KeepHoodDecals)
+	if (HoodDecalsOnCustomHoods)
 	{
 		injector::WriteMemory<BYTE>(0x55C2B0, 0xEB, true); // CarCustomizeManager::InstallPart
 	}
@@ -656,10 +654,16 @@ int Init()
 	// Expand Memory Pools (ty Berkay and Aero_)
 	if (ExpandMemoryPools)
 	{
-		// FEngMemoryPoolSize (InitFEngMemoryPool)
-		injector::WriteMemory<int>(0x8F5790, 800000, true);
+		// FEngMemoryPoolSize (InitFEngMemoryPool reads it at 0x50BA29 and 0x50BA36).
+		// This used to write 0x8F5790, which does nothing: that address is inside a leftover
+		// relocation table, and the PE base relocation directory has size 0, so the loader never
+		// reads the blob and no instruction references it. Reported by a player on underground2.net.
+		// The game allocates FEngMemoryPoolNumber (0x7F9178, 2) pools of this size, so the total is
+		// twice what is written here: 2 x 800000 against a stock 2 x 400000.
+		injector::WriteMemory<int>(0x7F917C, 800000, true);
 
-		// CarLoaderPoolSizesD
+		// CarLoaderPoolSizesD. Nothing in this build reads it, only the R table below is, at
+		// 0x57A615, so these three are a harmless no-op kept in step with R.
 		injector::WriteMemory<int>(0x7FA9C8, 22000, true);
 		injector::WriteMemory<int>(0x7FA9CC, 18000, true);
 		injector::WriteMemory<int>(0x7FA9D0, 32000, true);
