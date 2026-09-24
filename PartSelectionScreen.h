@@ -1,6 +1,8 @@
 #include "stdio.h"
 #include "InGameFunctions.h"
 #include "GarageFilter.h"
+
+bool Tire_IsPartListable(DWORD* Part, int Slot); // TireMaterial.h
 #include "PartLink.h"
 #include "ChooseRimBrand.h"
 
@@ -196,6 +198,16 @@ void __fastcall PartSelectionScreen_SetupBodyShop(DWORD* PartSelectionScreen, vo
             CarConfigs[CarTypeID].Icons.BodyShopBrakes,
             CarConfigs[CarTypeID].Names.BodyShopBrakes,
             0); // FRONT_BRAKE
+
+    // Tyres. Next to the brakes because that is where the wheel belongs in the list, and on the
+    // slot the tyre parts were authored into. See TIRE_CAR_SLOT in TireMaterial.h.
+    if (CarConfigs[CarTypeID].BodyShop.Tires)
+        PartSelectionScreen_AddCategoryChecked(
+            PartSelectionScreen,
+            TIRE_CAR_SLOT,
+            CarConfigs[CarTypeID].Icons.BodyShopTires,
+            CarConfigs[CarTypeID].Names.BodyShopTires,
+            0); // TIRES
     
     if (CarConfigs[CarTypeID].BodyShop.CarbonFiber)
         PartSelectionScreen_AddCategoryCarbonChecked(
@@ -408,6 +420,7 @@ int GetPartsList(int CarSlotID, DWORD* PartsBList, unsigned int PartAttribFilter
     switch (CarSlotID)
     {
     case CARSLOTID_BASE:
+    case TIRE_CAR_SLOT: // the tyre parts, see TireMaterial.h
     case CARSLOTID_FRONT_BUMPER:
     case CARSLOTID_REAR_BUMPER:
     case CARSLOTID_WIDE_BODY:
@@ -445,7 +458,8 @@ int GetPartsList(int CarSlotID, DWORD* PartsBList, unsigned int PartAttribFilter
                 if (IsCarPartOffered(CarCustomizeManager_GetPartUnlockFilter(), CarSlotID, TheCarPart, SomethingUnk, FirstCandidate)
                     && (CarSlotID != CARSLOTID_HOOD || (*((BYTE*)TheCarPart + 5) & 0x1F) != 5)
                     && !PartLink_IsHiddenFromMenu(TheCarPart) && !PartLink_IsSlotHidden(CarSlotID)
-                    && PartLink_IsPartFiltered(TheCarPart, CarTypeID, CarSlotID))
+                    && PartLink_IsPartFiltered(TheCarPart, CarTypeID, CarSlotID)
+                    && Tire_IsPartListable(TheCarPart, CarSlotID))
                 {
                     NewBNode = (DWORD*)j__malloc(0x10u);
                     if (NewBNode)

@@ -410,6 +410,7 @@ struct BodyShopSection
 	bool Interior;
 	bool Roof;
 	bool Brakes;
+	bool Tires;
 	bool Headlights;
 	bool Taillights;
 	bool Mirrors;
@@ -524,6 +525,7 @@ struct IconsSection
 	DWORD BodyShopRims;
 	DWORD BodyShopRimsCustom;
 	DWORD BodyShopBrakes;
+	DWORD BodyShopTires;
 	DWORD BodyShopCarbonFiber;
 	DWORD BodyShopCarbonFiberHood;
 	DWORD BodyShopCarbonFiberSpoiler;
@@ -764,6 +766,7 @@ struct NamesSection
 	DWORD BodyShopRims;
 	DWORD BodyShopRimsCustom;
 	DWORD BodyShopBrakes;
+	DWORD BodyShopTires;
 	DWORD BodyShopCarbonFiber;
 	DWORD BodyShopCarbonFiberHood;
 	DWORD BodyShopCarbonFiberSpoiler;

@@ -39,6 +39,7 @@ char AttachmentNameBuf[64];
 #include "PlayerCareerState.h"
 #include "StarGazerGuide.h"
 #include "DetailsPane.h"
+#include "TireMaterial.h"
 #include "PartSelectionScreen.h"
 #include "ChooseRimBrand.h"
 #include "IceCategoryTrunkThing.h"
@@ -121,6 +122,11 @@ int Init()
 	ExtendFeCarLimits = mINI_ReadInteger(Settings, "Misc", "ExtendFeCarLimits", 1) != 0;// Doubles the amount of stock and tuned cars a player can have in a profile.
 	StaticCameraGenericFallback = mINI_ReadInteger(Settings, "Misc", "StaticCameraGenericFallback", 1) != 0;
 	SortStockCarsByStage = mINI_ReadInteger(Settings, "Misc", "SortStockCarsByStage", 0) != 0;
+
+	// String first: mINI_ReadHash hashes whatever it finds, and an empty key would come back as
+	// bStringHash("") = 0xFFFFFFFF rather than off.
+	char* TireCollectionName = mINI_ReadString(Settings, "Misc", "TirePartsCollection", "");
+	TirePartsCollection = (TireCollectionName && TireCollectionName[0]) ? bStringHash(TireCollectionName) : 0;
 	FilterDecalsByInitials = Clamp(mINI_ReadInteger(Settings, "Misc", "FilterDecalsByInitials", 1), 0, 2);
 	HoodDecalsOnCustomHoods = mINI_ReadInteger(Settings, "Misc", "HoodDecalsOnCustomHoods", 1) != 0;
 	GarageShowsOwnedPartsOnly = mINI_ReadInteger(Settings, "Misc", "GarageShowsOwnedPartsOnly", 0) != 0;
@@ -157,6 +163,11 @@ int Init()
 
 	// Trace
 	PartLinkTrace = mINI_ReadInteger(Settings, "Trace", "PartLinkTrace", 0) != 0;
+	TireMaterialProbe = mINI_ReadInteger(Settings, "Trace", "TireMaterialProbe", 0) != 0;
+
+	// Read as a string first, for the same reason as TirePartsCollection above.
+	char* TireTextureName = mINI_ReadString(Settings, "Debug", "TireTexture", "");
+	TireTextureOverride = (TireTextureName && TireTextureName[0]) ? bStringHash(TireTextureName) : 0;
 
 	// Count Cars Automatically
 	injector::WriteMemory(0x7FA898, &LoaderCarInfo_Hook, true); // LoaderTable
@@ -723,6 +734,8 @@ int Init()
 	if (BigFileVFSHandlePoolSize > 127) BigFileVFSHandlePoolSize = 64;
 	injector::WriteMemory<BYTE>(0x486531, BigFileVFSHandlePoolSize, true);
 	injector::WriteMemory<BYTE>(0x486541, BigFileVFSHandlePoolSize, true);
+	InitTireMaterial();
+
 	InitBigFileVFS();
 
 	if (CarSoundTunerEnabled)

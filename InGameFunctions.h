@@ -231,6 +231,9 @@ bool(*PartsCategoryRimsIsLocked)() = (bool(*)())0x539C20;
 bool(*Player_IsHudKPH)() = (bool(*)())0x5EA8B0;
 ePositionMarker* (__thiscall* eModel_GetPositionMarker)(DWORD* eModel, ePositionMarker* previous) = (ePositionMarker * (__thiscall*)(DWORD*, ePositionMarker*))0x48D8A0;
 void(__thiscall* eModel_ReplaceLightMaterial_Game)(DWORD* eModel, int NameHash, int LightMaterial) = (void(__thiscall*)(DWORD*, int, int))0x48D860;
+// The second and third arguments are what the game itself passes from sub_4905A0 when it resolves
+// a replacement texture: (hash, 1, 0). Returns a TextureInfo*, or null when no loaded pack has it.
+void* (__cdecl* GetTextureInfo)(DWORD NameHash, int a2, int a3) = (void* (__cdecl*)(DWORD, int, int))0x4901D0;
 int(__cdecl* bSPrintf)(const char* buf, const char* format, ...) = (int(__cdecl*)(const char*, const char*, ...))0x4400D0;
 void(__thiscall* CarRenderInfo_UpdateCarReplacementTextures_Game)(DWORD* CarRenderInfo) = (void(__thiscall*)(DWORD*))0x615280;
 BYTE*(__thiscall* UnlockablePartData_GetLevel)(BYTE* CarRenderInfo, int level) = (BYTE*(__thiscall*)(BYTE*, int))0x501750;
