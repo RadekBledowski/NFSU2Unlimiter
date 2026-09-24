@@ -47,10 +47,10 @@
 // (0x10C98090), which is the same attribute a rim uses to name its own texture. So a tyre is
 // authored like any other part: a car part with TEXTURE_NAME pointing at a texture.
 //
-// WHICH SLOT, and the one thing to know before building on this. The parts live in
-// LEFT_SIDE_MIRROR. That slot is not free: it holds a car's stock left mirror, so a car wearing a
-// tyre part has no left mirror model. Changing TIRE_CAR_SLOT below and re-authoring the parts
-// with the matching CarPartGroupID is the whole fix if that ever matters.
+// WHICH SLOT. The parts live in LEFT_SIDE_MIRROR, and that costs nothing: UG2 hangs both mirrors
+// off WING_MIRROR and never uses LEFT_SIDE_MIRROR or RIGHT_SIDE_MIRROR for a model, so a car
+// wearing a tyre part loses nothing. Changing TIRE_CAR_SLOT below and re-authoring the parts with
+// the matching CarPartGroupID is the whole move if it ever has to go elsewhere.
 //
 // HOW THE PARTS REACH EVERY CAR. GetTypesFromSlot (0x6101E0) hands NewGetCarPart two car type
 // names to search per slot, out of DefaultSlotTypeNameTable, where 0xFFFFFFFF means "the car's own
