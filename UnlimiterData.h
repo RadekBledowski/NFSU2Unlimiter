@@ -190,9 +190,9 @@ void LoadCarConfigs()
 	DefaultCarConfig.Icons.BodyShopExhaust = mINI_ReadHashS(GeneralINI, "Icons", "BodyShopExhaust", "VISUAL_PART_MUFFLERTIP");
 	DefaultCarConfig.Icons.BodyShopRims = mINI_ReadHashS(GeneralINI, "Icons", "BodyShopRims", "VISUAL_PART_RIMS");
 	DefaultCarConfig.Icons.BodyShopRimsCustom = mINI_ReadHashS(GeneralINI, "Icons", "BodyShopRimsCustom", "VISUAL_RIMS_BRAND_CUSTOM");
-	// The rims icon by default only because it is one that certainly exists. Point this at an
-	// icon of your own once the FNG has one, otherwise two categories wear the same picture.
-	DefaultCarConfig.Icons.BodyShopTires = mINI_ReadHashS(GeneralINI, "Icons", "BodyShopTires", "VISUAL_PART_RIMS");
+	// The performance shop's tyre icon and name, so the body shop category reads as the same thing
+	// rather than borrowing the rims picture.
+	DefaultCarConfig.Icons.BodyShopTires = mINI_ReadHashS(GeneralINI, "Icons", "BodyShopTires", "PERFORMANCE_TIRES");
 	DefaultCarConfig.Icons.BodyShopBrakes = mINI_ReadHashS(GeneralINI, "Icons", "BodyShopBrakes", "VISUAL_PART_BRAKES");
 	DefaultCarConfig.Icons.BodyShopCarbonFiber = mINI_ReadHashS(GeneralINI, "Icons", "BodyShopCarbonFiber", "VISUAL_PART_CARBON_FIBRE");
 	DefaultCarConfig.Icons.BodyShopCarbonFiberHood = mINI_ReadHashS(GeneralINI, "Icons", "BodyShopCarbonFiberHood", "VISUAL_PART_CARBON_FIBRE_HOODS");
@@ -431,7 +431,7 @@ void LoadCarConfigs()
 	DefaultCarConfig.Names.BodyShopExhaust = mINI_ReadHashS(GeneralINI, "Names", "BodyShopExhaust", "VISUAL_PART_MUFFLER_TIP");
 	DefaultCarConfig.Names.BodyShopRims = mINI_ReadHashS(GeneralINI, "Names", "BodyShopRims", "VISUAL_PART_RIMS");
 	DefaultCarConfig.Names.BodyShopRimsCustom = mINI_ReadHashS(GeneralINI, "Names", "BodyShopRimsCustom", "RIMS_BRAND_CUSTOM");
-	DefaultCarConfig.Names.BodyShopTires = mINI_ReadHashS(GeneralINI, "Names", "BodyShopTires", "VISUAL_PART_RIMS");
+	DefaultCarConfig.Names.BodyShopTires = mINI_ReadHashS(GeneralINI, "Names", "BodyShopTires", "PERF_CATEGORY_TIRES");
 	DefaultCarConfig.Names.BodyShopBrakes = mINI_ReadHashS(GeneralINI, "Names", "BodyShopBrakes", "VISUAL_PART_BRAKES");
 	DefaultCarConfig.Names.BodyShopCarbonFiber = mINI_ReadHashS(GeneralINI, "Names", "BodyShopCarbonFiber", "VISUAL_PART_CARBON_FIBRE");
 	DefaultCarConfig.Names.BodyShopCarbonFiberHood = mINI_ReadHashS(GeneralINI, "Names", "BodyShopCarbonFiberHood", "VISUAL_PART_CARBON_FIBRE_HOODS");
