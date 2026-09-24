@@ -104,7 +104,7 @@ int Init()
 	EnableFNGFixes = mINI_ReadInteger(Settings, "Fixes", "FNGFix", 0) != 0;
 	StreamingTrafficCarManagerFix = mINI_ReadInteger(Settings, "Fixes", "StreamingTrafficCarManagerFix", 0) != 0;
 	AccumulateTireOffsets = mINI_ReadInteger(Settings, "Fixes", "AccumulateTireOffsets", 1) != 0;
-	HiddenSpecialtiesInGarage = ParseHiddenSpecialties(mINI_ReadString(Settings, "Fixes", "HideSpecialtiesInGarage", "LicensePlate"));
+	HiddenSpecialtiesInGarage = ParseHiddenSpecialties(mINI_ReadString(Settings, "Fixes", "HideSpecialtiesInGarage", "0"));
 	EngineSFXGuard = mINI_ReadInteger(Settings, "Fixes", "EngineSFXGuard", 1) != 0;
 	AIEngineBankFix = mINI_ReadInteger(Settings, "Fixes", "AIEngineBankFix", 1) != 0;
 

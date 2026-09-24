@@ -118,6 +118,12 @@ struct CombinedPointers
 	FEOnlineCar* pOnlineCars2[6];
 };
 
+// A car unlock record holds two event handles and they are not two requirements. +4 is the one the
+// game reads when GetBuildRegion returns 0 and +8 the one it reads otherwise, chosen in
+// find_event_that_has_car_as_a_reward at 0x5023CD and 0x5023DA. An empty handle is not missing
+// data: it means this region hands the car over from the start, which is why the helper is asked
+// for it rather than the record being read directly. Do not fall back to the other region's handle,
+// that turns a car you already have into one that unlocks two stages in.
 int StockCarStage(FEStockCar* car)
 {
 	if (!car || !car->unk2) return 0x7FFFFFFF; // unassigned slot, park it at the end
