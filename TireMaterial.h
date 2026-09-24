@@ -133,6 +133,15 @@ bool Tire_ValidPtr(void* p)
 	return v >= 0x00010000 && v <= 0xC0000000 && !(v & 3);
 }
 
+// Car parts are 14 byte records packed back to back, so every other one sits on an address that
+// is only even. Tire_ValidPtr's alignment test would turn those away, and did: a PAINTABLE tyre
+// that landed on one was never painted and said nothing about it. Range only for parts.
+bool Tire_ValidPartPtr(void* p)
+{
+	uintptr_t v = (uintptr_t)p;
+	return v >= 0x00010000 && v <= 0xC0000000;
+}
+
 // One entry per solid, not one per mesh per frame. This sits in the renderer's inner loop.
 std::vector<DWORD*> TireProbeSeen;
 
@@ -322,7 +331,13 @@ void Tire_PaintIfWanted(DWORD* RideInfo, DWORD TextureHash)
 
 	DWORD* Part = (DWORD*)RideInfo[356 + TIRE_CAR_SLOT];
 
-	if (!Tire_ValidPtr(Part)) return;
+	if (!Part) return;
+
+	if (!Tire_ValidPartPtr(Part))
+	{
+		TireNote("tyre part pointer %p is not a usable address, left as it is\n", Part);
+		return;
+	}
 
 	if (!CarPart_GetAppliedAttributeUParam(Part, TIRE_ATTR_PAINTABLE, 0))
 	{
@@ -412,7 +427,7 @@ void Tire_PaintIfWanted(DWORD* RideInfo, DWORD TextureHash)
 
 	// No colour, or the unused first entry, is the vinyl identity: red stays red.
 	int CR = 255, CG = 0, CB = 0;
-	bool HasColour = Tire_ValidPtr(ColourPart) && ColourPart[0] != CT_bStringHash("VINYL_L1_COLOR01");
+	bool HasColour = Tire_ValidPartPtr(ColourPart) && ColourPart[0] != CT_bStringHash("VINYL_L1_COLOR01");
 
 	if (HasColour)
 	{
