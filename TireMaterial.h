@@ -247,9 +247,36 @@ void TireNote(const char* fmt, ...)
 // the texture's, since bStringHash is a fold: TIRE_PAINTABLE is A2BEB302, TIRE_PAINTABLE_MASK
 // A07354CD.
 //
-// BOTH HAVE TO BE 32 BIT AND THE SAME SIZE. Only 32 bit texture memory is a plain array of pixels.
-// The game creates those as D3DFMT_A8R8G8B8 in D3DPOOL_MANAGED (format 15h pushed to CreateTexture
-// at 0x5CE2A4), so a pixel in memory is blue, green, red, alpha, with red in the third byte.
+// FORMATS. What the texture is, and how big, is read off the D3D texture itself with
+// IDirect3DTexture9::GetLevelCount (+34h) and GetLevelDesc (+44h), not out of TextureInfo. The
+// game can hand D3D a smaller texture than TextureInfo describes: under a lower texture detail
+// setting sub_5CE170 divides both sides and leaves out that many top levels (0x5CE297,
+// dword_870794), so TextureInfo's sizes are not what LockRect hands back. Paletted textures never
+// reach D3D as such, the same function expands them to A8R8G8B8 at creation (0x5CE1BC to
+// 0x5CE271), so a P8 tyre arrives here as 32 bit.
+//
+// A8R8G8B8 and X8R8G8B8 are a plain array of pixels, blue, green, red, alpha in memory, painted in
+// place.
+//
+// DXT1, DXT3 and DXT5 store every 4x4 block as two 5:6:5 colours and a 2 bit index per texel
+// choosing one of four points between them. DXT3 and DXT5 keep their alpha in the first half of a
+// 16 byte block and DXT1 has only the 8 byte colour half. Alpha is never touched. The colour half
+// is rewritten only in blocks the mask reaches, every other block goes back bit for bit, and a
+// painted block is encoded two ways with the closer one kept:
+//   - the block's own two colours put through the mix. The mix is linear in the colour, so where
+//     the mask is even across the block this is the authored block recoloured, with nothing lost
+//     to a second compression;
+//   - a fresh fit along the painted texels' principal axis, refined by least squares, for blocks a
+//     mask edge runs through, whose texels no longer share one mix.
+// A DXT1 block using its transparent texel (first colour not the larger, index 3) is left as it
+// is, since a four colour block cannot hold one. DXT3 and DXT5 colour halves are always read as
+// four colour, the way D3D reads them.
+//
+// The mask can be any of those formats and any size. Coverage is its brightest channel, and each
+// texel of the tyre takes the mask's average over the area it covers.
+//
+// Every mip level is painted, each against the mask scaled to its own size, so the stripe keeps
+// its colour at a distance too.
 //
 // CompositeWheel is not used for this, for three reasons. Its 32 bit path pairs RED with the
 // pixel's first byte, which is blue, so it would recolour the wrong channel. It multiplies rather
@@ -263,20 +290,37 @@ void TireNote(const char* fmt, ...)
 //
 // Locking goes straight to the texture's own vtable, LockRect at +4Ch and UnlockRect at +50h, the
 // same calls TextureInfoPlatInterface::LockImage (0x5B96A0) and sub_5B96D0 make. The game's wrapper
-// throws away both the HRESULT and the row pitch; this needs the first to know the pointer is real
-// and the second to walk rows correctly.
+// throws away both the HRESULT and the row pitch and only ever locks level 0; this needs the first
+// to know the pointer is real, the second to walk rows correctly, and every level. Reads lock with
+// D3DLOCK_READONLY, so D3D does not count them as changes and upload the texture again.
 //
 // Textures are looked up with GetTextureInfo(hash, 0, 0), which returns null for a texture no loaded
 // pack holds. With 1 as the second argument it hands back DefaultTextureInfo instead (0x4902AF),
 // which would be painted in place of the real thing.
 
-#define TireTex_Format(t)  (*(BYTE*)((BYTE*)(t) + 0x4A))
-#define TireTex_Width(t)   (*(short*)((BYTE*)(t) + 0x44))
-#define TireTex_Height(t)  (*(short*)((BYTE*)(t) + 0x46))
-#define TireTex_Mips(t)    (*(char*)((BYTE*)(t) + 0x4E))
-#define TIRE_TEXTURE_32BIT 0x20
+#define TIRE_D3DFMT_A8R8G8B8 21
+#define TIRE_D3DFMT_X8R8G8B8 22
+#define TIRE_D3DFMT_DXT1 0x31545844 // 'DXT1'
+#define TIRE_D3DFMT_DXT2 0x32545844
+#define TIRE_D3DFMT_DXT3 0x33545844
+#define TIRE_D3DFMT_DXT4 0x34545844
+#define TIRE_D3DFMT_DXT5 0x35545844
+#define TIRE_D3DLOCK_READONLY 0x10
+
+enum { TIRE_KIND_NONE, TIRE_KIND_32BIT, TIRE_KIND_DXT1, TIRE_KIND_DXT35 };
+
+struct TireSurfaceDesc { DWORD Format, Type, Usage, Pool, MultiSampleType, MultiSampleQuality; UINT Width, Height; };
 
 struct TireLockedRect { int Pitch; BYTE* Bits; };
+
+// One mip level as this code walks it: pixel rows for 32 bit, rows of 4x4 blocks for DXT.
+struct TireLevel
+{
+	int Kind;
+	DWORD Format;
+	int Width, Height;
+	int Rows, RowBytes, BlockBytes;
+};
 
 void* Tire_D3DTexture(void* TextureInfo)
 {
@@ -291,31 +335,450 @@ void* Tire_D3DTexture(void* TextureInfo)
 	return Tire_ValidPtr(Texture) ? Texture : nullptr;
 }
 
-bool Tire_Lock(void* Texture, TireLockedRect& Rect, long& Result)
+int Tire_LevelCount(void* Texture)
+{
+	typedef DWORD(__stdcall* GetLevelCountFn)(void*);
+
+	return (int)((GetLevelCountFn)(*(void***)Texture)[0x34 / 4])(Texture);
+}
+
+// False only when D3D will not describe the level. An unsupported format comes back as true with
+// Kind left at TIRE_KIND_NONE, so the caller can name the format it turned down.
+bool Tire_LevelLayout(void* Texture, int Level, TireLevel& L)
+{
+	typedef long(__stdcall* GetLevelDescFn)(void*, UINT, TireSurfaceDesc*);
+
+	TireSurfaceDesc Desc = {};
+	L = {};
+
+	if (((GetLevelDescFn)(*(void***)Texture)[0x44 / 4])(Texture, (UINT)Level, &Desc) < 0) return false;
+
+	L.Format = Desc.Format;
+	L.Width = (int)Desc.Width;
+	L.Height = (int)Desc.Height;
+
+	if (L.Width <= 0 || L.Height <= 0) return false;
+
+	switch (Desc.Format)
+	{
+	case TIRE_D3DFMT_A8R8G8B8:
+	case TIRE_D3DFMT_X8R8G8B8:
+		L.Kind = TIRE_KIND_32BIT;
+		L.BlockBytes = 4;
+		L.Rows = L.Height;
+		L.RowBytes = L.Width * 4;
+		return true;
+
+	case TIRE_D3DFMT_DXT1:
+		L.Kind = TIRE_KIND_DXT1;
+		L.BlockBytes = 8;
+		break;
+
+	case TIRE_D3DFMT_DXT2:
+	case TIRE_D3DFMT_DXT3:
+	case TIRE_D3DFMT_DXT4:
+	case TIRE_D3DFMT_DXT5:
+		L.Kind = TIRE_KIND_DXT35;
+		L.BlockBytes = 16;
+		break;
+
+	default:
+		return true;
+	}
+
+	L.Rows = (L.Height + 3) / 4;
+	L.RowBytes = ((L.Width + 3) / 4) * L.BlockBytes;
+
+	return true;
+}
+
+const char* Tire_FormatName(DWORD Format, char* Buf)
+{
+	if (Format == TIRE_D3DFMT_A8R8G8B8) return "A8R8G8B8";
+	if (Format == TIRE_D3DFMT_X8R8G8B8) return "X8R8G8B8";
+
+	if (Format > 0xFFFF)
+	{
+		for (int i = 0; i < 4; i++) Buf[i] = (char)((Format >> (8 * i)) & 0xFF);
+		Buf[4] = 0;
+	}
+	else snprintf(Buf, 16, "D3DFMT %u", (unsigned int)Format);
+
+	return Buf;
+}
+
+bool Tire_Lock(void* Texture, int Level, int RowBytes, TireLockedRect& Rect, long& Result, DWORD Flags)
 {
 	typedef long(__stdcall* LockRectFn)(void*, unsigned int, TireLockedRect*, const void*, unsigned long);
+	typedef long(__stdcall* UnlockRectFn)(void*, unsigned int);
 
 	Rect.Pitch = 0;
 	Rect.Bits = nullptr;
 
-	Result = ((LockRectFn)(*(void***)Texture)[0x4C / 4])(Texture, 0, &Rect, nullptr, 0);
+	Result = ((LockRectFn)(*(void***)Texture)[0x4C / 4])(Texture, (unsigned int)Level, &Rect, nullptr, Flags);
 
-	return Result >= 0 && Rect.Bits && Rect.Pitch > 0;
+	if (Result < 0) return false;
+
+	if (!Rect.Bits || Rect.Pitch < RowBytes)
+	{
+		((UnlockRectFn)(*(void***)Texture)[0x50 / 4])(Texture, (unsigned int)Level);
+		return false;
+	}
+
+	return true;
 }
 
-void Tire_Unlock(void* Texture)
+void Tire_Unlock(void* Texture, int Level)
 {
 	typedef long(__stdcall* UnlockRectFn)(void*, unsigned int);
 
-	((UnlockRectFn)(*(void***)Texture)[0x50 / 4])(Texture, 0);
+	((UnlockRectFn)(*(void***)Texture)[0x50 / 4])(Texture, (unsigned int)Level);
+}
+
+static inline int TireClamp(int v) { return v < 0 ? 0 : (v > 255 ? 255 : v); }
+
+struct TireRGB { int r, g, b; };
+
+static inline bool operator==(const TireRGB& a, const TireRGB& b) { return a.r == b.r && a.g == b.g && a.b == b.b; }
+
+static inline int Tire_Distance(const TireRGB& a, const TireRGB& b)
+{
+	int dr = a.r - b.r, dg = a.g - b.g, db = a.b - b.b;
+	return dr * dr + dg * dg + db * db;
+}
+
+// The vinyl mix with only the first colour set: red becomes the colour, scaled by how red the
+// texel was, green and blue carry on as themselves, and the mask's coverage blends it in.
+static inline TireRGB Tire_Mix(const TireRGB& p, int Cover, int CR, int CG, int CB)
+{
+	if (!Cover) return p;
+
+	int nr = TireClamp(p.r * CR / 255);
+	int ng = TireClamp(p.r * CG / 255 + p.g);
+	int nb = TireClamp(p.r * CB / 255 + p.b);
+
+	return { p.r + (nr - p.r) * Cover / 255, p.g + (ng - p.g) * Cover / 255, p.b + (nb - p.b) * Cover / 255 };
+}
+
+static inline TireRGB Tire_Expand565(WORD c)
+{
+	int r = (c >> 11) & 31, g = (c >> 5) & 63, b = c & 31;
+
+	return { (r << 3) | (r >> 2), (g << 2) | (g >> 4), (b << 3) | (b >> 2) };
+}
+
+static inline WORD Tire_Pack565(int r, int g, int b)
+{
+	r = (TireClamp(r) * 31 + 127) / 255;
+	g = (TireClamp(g) * 63 + 127) / 255;
+	b = (TireClamp(b) * 31 + 127) / 255;
+
+	return (WORD)((r << 11) | (g << 5) | b);
+}
+
+static inline WORD Tire_Pack565(const double* c)
+{
+	return Tire_Pack565((int)(c[0] + 0.5), (int)(c[1] + 0.5), (int)(c[2] + 0.5));
+}
+
+static void Tire_Palette4(WORD c0, WORD c1, TireRGB Pal[4])
+{
+	Pal[0] = Tire_Expand565(c0);
+	Pal[1] = Tire_Expand565(c1);
+	Pal[2] = { (2 * Pal[0].r + Pal[1].r) / 3, (2 * Pal[0].g + Pal[1].g) / 3, (2 * Pal[0].b + Pal[1].b) / 3 };
+	Pal[3] = { (Pal[0].r + 2 * Pal[1].r) / 3, (Pal[0].g + 2 * Pal[1].g) / 3, (Pal[0].b + 2 * Pal[1].b) / 3 };
+}
+
+// Decodes a colour half into Px. FourColour says the block is read as four colours, which is what
+// makes its own endpoints worth reusing; Opaque is false for a DXT1 block using its transparent
+// texel.
+static void Tire_DecodeColour(const BYTE* Block, bool Dxt1, TireRGB Px[16], int Idx[16], bool& FourColour, bool& Opaque)
+{
+	WORD c0 = *(const WORD*)Block, c1 = *(const WORD*)(Block + 2);
+	DWORD Bits = *(const DWORD*)(Block + 4);
+	TireRGB Pal[4];
+
+	FourColour = !Dxt1 || c0 > c1;
+	Opaque = true;
+
+	if (FourColour) Tire_Palette4(c0, c1, Pal);
+	else
+	{
+		Pal[0] = Tire_Expand565(c0);
+		Pal[1] = Tire_Expand565(c1);
+		Pal[2] = { (Pal[0].r + Pal[1].r) / 2, (Pal[0].g + Pal[1].g) / 2, (Pal[0].b + Pal[1].b) / 2 };
+		Pal[3] = { 0, 0, 0 };
+	}
+
+	for (int i = 0; i < 16; i++)
+	{
+		Idx[i] = (Bits >> (2 * i)) & 3;
+		Px[i] = Pal[Idx[i]];
+
+		if (!FourColour && Idx[i] == 3) Opaque = false;
+	}
+}
+
+// The nearest of the four colours for every texel, and the total squared error.
+static int Tire_PickIndices(const TireRGB Px[16], WORD c0, WORD c1, int Idx[16])
+{
+	TireRGB Pal[4];
+	Tire_Palette4(c0, c1, Pal);
+
+	int Error = 0;
+
+	for (int i = 0; i < 16; i++)
+	{
+		int Best = 0, BestDistance = Tire_Distance(Px[i], Pal[0]);
+
+		for (int k = 1; k < 4; k++)
+		{
+			int d = Tire_Distance(Px[i], Pal[k]);
+			if (d < BestDistance) { Best = k; BestDistance = d; }
+		}
+
+		Idx[i] = Best;
+		Error += BestDistance;
+	}
+
+	return Error;
+}
+
+// Moves both endpoints to where the chosen indices want them, least squares, and keeps the move
+// while it helps.
+static void Tire_Refine(const TireRGB Px[16], WORD& c0, WORD& c1, int Idx[16], int& Error)
+{
+	static const double Weight0[4] = { 1.0, 0.0, 2.0 / 3.0, 1.0 / 3.0 };
+
+	for (int Pass = 0; Pass < 2; Pass++)
+	{
+		double A = 0, B = 0, C = 0, X0[3] = { 0, 0, 0 }, X1[3] = { 0, 0, 0 };
+
+		for (int i = 0; i < 16; i++)
+		{
+			double w0 = Weight0[Idx[i]], w1 = 1.0 - w0;
+			double p[3] = { (double)Px[i].r, (double)Px[i].g, (double)Px[i].b };
+
+			A += w0 * w0; B += w0 * w1; C += w1 * w1;
+
+			for (int k = 0; k < 3; k++) { X0[k] += w0 * p[k]; X1[k] += w1 * p[k]; }
+		}
+
+		double Det = A * C - B * B;
+
+		if (Det < 1e-6 && Det > -1e-6) return;
+
+		double E0[3], E1[3];
+
+		for (int k = 0; k < 3; k++)
+		{
+			E0[k] = (C * X0[k] - B * X1[k]) / Det;
+			E1[k] = (A * X1[k] - B * X0[k]) / Det;
+		}
+
+		WORD n0 = Tire_Pack565(E0), n1 = Tire_Pack565(E1);
+		int NewIdx[16];
+		int NewError = Tire_PickIndices(Px, n0, n1, NewIdx);
+
+		if (NewError >= Error) return;
+
+		c0 = n0; c1 = n1; Error = NewError;
+		memcpy(Idx, NewIdx, sizeof(NewIdx));
+	}
+}
+
+// A fresh fit: the endpoints at either end of the texels' spread along their principal axis.
+static int Tire_FitColour(const TireRGB Px[16], WORD& c0, WORD& c1, int Idx[16])
+{
+	double Mean[3] = { 0, 0, 0 };
+
+	for (int i = 0; i < 16; i++) { Mean[0] += Px[i].r; Mean[1] += Px[i].g; Mean[2] += Px[i].b; }
+	for (int k = 0; k < 3; k++) Mean[k] /= 16.0;
+
+	double Cov[3][3] = {};
+
+	for (int i = 0; i < 16; i++)
+	{
+		double d[3] = { Px[i].r - Mean[0], Px[i].g - Mean[1], Px[i].b - Mean[2] };
+
+		for (int a = 0; a < 3; a++)
+			for (int b = 0; b < 3; b++)
+				Cov[a][b] += d[a] * d[b];
+	}
+
+	// Power iteration from the covariance column with the most in it, which cannot be orthogonal to
+	// the principal axis the way a fixed start like (1,1,1) can.
+	int Start = 0;
+
+	for (int k = 1; k < 3; k++)
+		if (Cov[k][k] > Cov[Start][Start]) Start = k;
+
+	double Axis[3] = { Cov[0][Start], Cov[1][Start], Cov[2][Start] };
+
+	for (int Iteration = 0; Iteration < 8; Iteration++)
+	{
+		double v[3];
+		double Length = 0;
+
+		for (int a = 0; a < 3; a++)
+		{
+			v[a] = Cov[a][0] * Axis[0] + Cov[a][1] * Axis[1] + Cov[a][2] * Axis[2];
+			Length = Length > (v[a] < 0 ? -v[a] : v[a]) ? Length : (v[a] < 0 ? -v[a] : v[a]);
+		}
+
+		if (Length < 1e-9) break;
+
+		for (int a = 0; a < 3; a++) Axis[a] = v[a] / Length;
+	}
+
+	double Norm = Axis[0] * Axis[0] + Axis[1] * Axis[1] + Axis[2] * Axis[2];
+
+	if (Norm < 1e-12)
+	{
+		// One colour throughout
+		c0 = c1 = Tire_Pack565(Mean);
+		return Tire_PickIndices(Px, c0, c1, Idx);
+	}
+
+	double Min = 1e30, Max = -1e30;
+
+	for (int i = 0; i < 16; i++)
+	{
+		double t = ((Px[i].r - Mean[0]) * Axis[0] + (Px[i].g - Mean[1]) * Axis[1] + (Px[i].b - Mean[2]) * Axis[2]) / Norm;
+
+		if (t < Min) Min = t;
+		if (t > Max) Max = t;
+	}
+
+	double E0[3], E1[3];
+
+	for (int k = 0; k < 3; k++)
+	{
+		E0[k] = Mean[k] + Axis[k] * Max;
+		E1[k] = Mean[k] + Axis[k] * Min;
+	}
+
+	c0 = Tire_Pack565(E0);
+	c1 = Tire_Pack565(E1);
+
+	int Error = Tire_PickIndices(Px, c0, c1, Idx);
+
+	Tire_Refine(Px, c0, c1, Idx, Error);
+
+	return Error;
+}
+
+// Writes a four colour block. The larger endpoint has to come first for DXT1 to read four colours
+// rather than three and a transparent one, so the ends are swapped where needed, which swaps index
+// 0 with 1 and 2 with 3. Two equal ends leave nothing to choose between and take index 0 throughout.
+static void Tire_WriteColour(BYTE* Block, WORD c0, WORD c1, const int Idx[16])
+{
+	bool Swap = c0 < c1;
+
+	if (Swap) { WORD t = c0; c0 = c1; c1 = t; }
+
+	DWORD Bits = 0;
+
+	if (c0 != c1)
+		for (int i = 0; i < 16; i++)
+			Bits |= (DWORD)(Swap ? Idx[i] ^ 1 : Idx[i]) << (2 * i);
+
+	*(WORD*)Block = c0;
+	*(WORD*)(Block + 2) = c1;
+	*(DWORD*)(Block + 4) = Bits;
+}
+
+// The mask's top level as one byte of coverage per texel, its brightest channel.
+struct TireCoverage
+{
+	int Width = 0, Height = 0;
+	std::vector<BYTE> Map;
+
+	// A texel of a W by H level takes the average over the part of the mask it covers.
+	int At(int x, int y, int W, int H) const
+	{
+		if (x >= W || y >= H) return 0;
+
+		int x0 = x * Width / W, x1 = (x + 1) * Width / W;
+		int y0 = y * Height / H, y1 = (y + 1) * Height / H;
+
+		if (x1 <= x0) x1 = x0 + 1;
+		if (y1 <= y0) y1 = y0 + 1;
+		if (x1 > Width) x1 = Width;
+		if (y1 > Height) y1 = Height;
+
+		int Sum = 0;
+
+		for (int yy = y0; yy < y1; yy++)
+			for (int xx = x0; xx < x1; xx++)
+				Sum += Map[(size_t)yy * Width + xx];
+
+		return Sum / ((x1 - x0) * (y1 - y0));
+	}
+};
+
+static inline BYTE Tire_Brightest(int r, int g, int b)
+{
+	return (BYTE)(r > g ? (r > b ? r : b) : (g > b ? g : b));
+}
+
+// Read only, so D3D does not count the mask as changed and send it to the card again.
+bool Tire_ReadCoverage(void* Mask, const TireLevel& L, TireCoverage& Cover, long& Result)
+{
+	TireLockedRect Rect;
+
+	if (!Tire_Lock(Mask, 0, L.RowBytes, Rect, Result, TIRE_D3DLOCK_READONLY)) return false;
+
+	Cover.Width = L.Width;
+	Cover.Height = L.Height;
+	Cover.Map.assign((size_t)L.Width * L.Height, 0);
+
+	if (L.Kind == TIRE_KIND_32BIT)
+	{
+		for (int y = 0; y < L.Height; y++)
+		{
+			const DWORD* Row = (const DWORD*)(Rect.Bits + (size_t)y * Rect.Pitch);
+
+			for (int x = 0; x < L.Width; x++)
+				Cover.Map[(size_t)y * L.Width + x] = Tire_Brightest((Row[x] >> 16) & 0xFF, (Row[x] >> 8) & 0xFF, Row[x] & 0xFF);
+		}
+	}
+	else
+	{
+		int ColourOffset = L.Kind == TIRE_KIND_DXT1 ? 0 : 8;
+		int BlocksX = L.RowBytes / L.BlockBytes;
+
+		for (int by = 0; by < L.Rows; by++)
+			for (int bx = 0; bx < BlocksX; bx++)
+			{
+				TireRGB Px[16];
+				int Idx[16];
+				bool FourColour, Opaque;
+
+				Tire_DecodeColour(Rect.Bits + (size_t)by * Rect.Pitch + bx * L.BlockBytes + ColourOffset,
+					L.Kind == TIRE_KIND_DXT1, Px, Idx, FourColour, Opaque);
+
+				for (int i = 0; i < 16; i++)
+				{
+					int x = bx * 4 + (i & 3), y = by * 4 + (i >> 2);
+
+					if (x < L.Width && y < L.Height)
+						Cover.Map[(size_t)y * L.Width + x] = Tire_Brightest(Px[i].r, Px[i].g, Px[i].b);
+				}
+			}
+	}
+
+	Tire_Unlock(Mask, 0);
+
+	return true;
 }
 
 struct TirePristine
 {
-	void* TextureInfo;
+	void* Texture;
 	DWORD Hash;
-	int Width, Height;
-	std::vector<DWORD> Pixels; // tightly packed rows
+	std::vector<TireLevel> Layout;
+	std::vector<std::vector<BYTE>> Levels; // each level's rows, tightly packed
 };
 
 std::vector<TirePristine> TirePristineCopies;
@@ -323,7 +786,166 @@ std::vector<TirePristine> TirePristineCopies;
 void* TireLastPaintedTexture = nullptr;
 DWORD* TireLastPaintPart = nullptr;
 
-static inline int TireClamp(int v) { return v < 0 ? 0 : (v > 255 ? 255 : v); }
+// Every level as it came out of the pack, taken the first time the texture is seen.
+TirePristine* Tire_Pristine(void* Tex, DWORD Hash, long& Result, int& FailedLevel)
+{
+	int Levels = Tire_LevelCount(Tex);
+
+	for (auto& C : TirePristineCopies)
+		if (C.Texture == Tex && C.Hash == Hash && (int)C.Layout.size() == Levels) return &C;
+
+	TirePristine Copy = { Tex, Hash };
+
+	for (int Level = 0; Level < Levels; Level++)
+	{
+		TireLevel L;
+		TireLockedRect Rect;
+
+		FailedLevel = Level;
+		Result = 0;
+
+		if (!Tire_LevelLayout(Tex, Level, L) || L.Kind == TIRE_KIND_NONE) return nullptr;
+		if (!Tire_Lock(Tex, Level, L.RowBytes, Rect, Result, TIRE_D3DLOCK_READONLY)) return nullptr;
+
+		std::vector<BYTE> Bytes((size_t)L.Rows * L.RowBytes);
+
+		for (int y = 0; y < L.Rows; y++)
+			memcpy(&Bytes[(size_t)y * L.RowBytes], Rect.Bits + (size_t)y * Rect.Pitch, L.RowBytes);
+
+		Tire_Unlock(Tex, Level);
+
+		Copy.Layout.push_back(L);
+		Copy.Levels.push_back(std::move(Bytes));
+	}
+
+	TirePristineCopies.push_back(std::move(Copy));
+
+	return &TirePristineCopies.back();
+}
+
+struct TirePaintStats { int Covered, CoveredRed, Recoded, KeptTransparent; };
+
+// Paints one level from its pristine bytes into the locked level.
+void Tire_PaintLevel(const TireLevel& L, const BYTE* Src, TireLockedRect& Rect, const TireCoverage& Cover,
+	int CR, int CG, int CB, bool TopLevel, TirePaintStats& Stats)
+{
+	if (L.Kind == TIRE_KIND_32BIT)
+	{
+		for (int y = 0; y < L.Height; y++)
+		{
+			const DWORD* In = (const DWORD*)(Src + (size_t)y * L.RowBytes);
+			DWORD* Out = (DWORD*)(Rect.Bits + (size_t)y * Rect.Pitch);
+
+			for (int x = 0; x < L.Width; x++)
+			{
+				DWORD P = In[x];
+				int c = Cover.At(x, y, L.Width, L.Height);
+
+				if (!c) { Out[x] = P; continue; }
+
+				// A8R8G8B8 in memory: blue, green, red, alpha
+				TireRGB p = { (int)(P >> 16) & 0xFF, (int)(P >> 8) & 0xFF, (int)P & 0xFF };
+				TireRGB n = Tire_Mix(p, c, CR, CG, CB);
+
+				if (TopLevel)
+				{
+					Stats.Covered++;
+					if (p.r > p.g + 16 && p.r > p.b + 16) Stats.CoveredRed++;
+				}
+
+				Out[x] = (P & 0xFF000000) | ((DWORD)n.r << 16) | ((DWORD)n.g << 8) | (DWORD)n.b;
+			}
+		}
+
+		return;
+	}
+
+	bool Dxt1 = L.Kind == TIRE_KIND_DXT1;
+	int ColourOffset = Dxt1 ? 0 : 8;
+	int BlocksX = L.RowBytes / L.BlockBytes;
+
+	for (int by = 0; by < L.Rows; by++)
+	{
+		for (int bx = 0; bx < BlocksX; bx++)
+		{
+			const BYTE* In = Src + (size_t)by * L.RowBytes + bx * L.BlockBytes;
+			BYTE* Out = Rect.Bits + (size_t)by * Rect.Pitch + bx * L.BlockBytes;
+
+			// Back to the authored block first, alpha half included, so anything not painted below
+			// is exactly what the pack held.
+			memcpy(Out, In, L.BlockBytes);
+
+			TireRGB Px[16], Target[16];
+			int OwnIdx[16], Covers[16];
+			bool FourColour, Opaque;
+
+			Tire_DecodeColour(In + ColourOffset, Dxt1, Px, OwnIdx, FourColour, Opaque);
+
+			int CoverSum = 0;
+			bool Changed = false;
+
+			for (int i = 0; i < 16; i++)
+			{
+				int x = bx * 4 + (i & 3), y = by * 4 + (i >> 2);
+
+				Covers[i] = Cover.At(x, y, L.Width, L.Height);
+				Target[i] = Tire_Mix(Px[i], Covers[i], CR, CG, CB);
+				CoverSum += Covers[i];
+
+				if (!(Target[i] == Px[i])) Changed = true;
+
+				if (TopLevel && Covers[i] && x < L.Width && y < L.Height)
+				{
+					Stats.Covered++;
+					if (Px[i].r > Px[i].g + 16 && Px[i].r > Px[i].b + 16) Stats.CoveredRed++;
+				}
+			}
+
+			if (!Changed) continue;
+
+			if (!Opaque)
+			{
+				Stats.KeptTransparent++;
+				continue;
+			}
+
+			// The block's own ends through the mix, at the block's average coverage
+			WORD Best0 = 0, Best1 = 0;
+			int BestIdx[16];
+			int BestError = 0x7FFFFFFF;
+
+			if (FourColour)
+			{
+				int c = CoverSum / 16;
+				TireRGB E0 = Tire_Mix(Tire_Expand565(*(const WORD*)(In + ColourOffset)), c, CR, CG, CB);
+				TireRGB E1 = Tire_Mix(Tire_Expand565(*(const WORD*)(In + ColourOffset + 2)), c, CR, CG, CB);
+
+				Best0 = Tire_Pack565(E0.r, E0.g, E0.b);
+				Best1 = Tire_Pack565(E1.r, E1.g, E1.b);
+				BestError = Tire_PickIndices(Target, Best0, Best1, BestIdx);
+
+				Tire_Refine(Target, Best0, Best1, BestIdx, BestError);
+			}
+
+			// A fresh fit, for when the mask does not cover the block evenly
+			if (BestError)
+			{
+				WORD f0, f1;
+				int FitIdx[16];
+				int FitError = Tire_FitColour(Target, f0, f1, FitIdx);
+
+				if (FitError < BestError)
+				{
+					Best0 = f0; Best1 = f1; BestError = FitError;
+					memcpy(BestIdx, FitIdx, sizeof(FitIdx));
+				}
+			}
+
+			Tire_WriteColour(Out + ColourOffset, Best0, Best1, BestIdx);
+			Stats.Recoded++;
+		}
+	}
+}
 
 void Tire_PaintIfWanted(DWORD* RideInfo, DWORD TextureHash)
 {
@@ -358,31 +980,6 @@ void Tire_PaintIfWanted(DWORD* RideInfo, DWORD TextureHash)
 		return;
 	}
 
-	TireNote("paintable tyre %08X: texture %p format %d %dx%d mips %d, mask %08X %p format %d %dx%d\n",
-		(unsigned int)TextureHash, TexInfo, TireTex_Format(TexInfo), TireTex_Width(TexInfo),
-		TireTex_Height(TexInfo), TireTex_Mips(TexInfo), (unsigned int)MaskHash, MaskInfo,
-		TireTex_Format(MaskInfo), TireTex_Width(MaskInfo), TireTex_Height(MaskInfo));
-
-	if (TireTex_Format(TexInfo) != TIRE_TEXTURE_32BIT || TireTex_Format(MaskInfo) != TIRE_TEXTURE_32BIT)
-	{
-		TireNote("paintable tyre %08X skipped: both have to be format 32, 32 bit\n", (unsigned int)TextureHash);
-		return;
-	}
-
-	int W = TireTex_Width(TexInfo), H = TireTex_Height(TexInfo);
-
-	if (W <= 0 || H <= 0 || W != TireTex_Width(MaskInfo) || H != TireTex_Height(MaskInfo))
-	{
-		TireNote("paintable tyre %08X skipped: texture and mask have to be the same size\n", (unsigned int)TextureHash);
-		return;
-	}
-
-	DWORD* ColourPart = (DWORD*)RideInfo[356 + CARSLOTID_WHEEL_MANUFACTURER];
-
-	// Only redo it when something it depends on has changed. The texture pointer is part of that:
-	// a pack unloaded and loaded again hands back fresh pixels at a new address.
-	if (TexInfo == TireLastPaintedTexture && ColourPart == TireLastPaintPart) return;
-
 	void* Tex = Tire_D3DTexture(TexInfo);
 	void* Mask = Tire_D3DTexture(MaskInfo);
 
@@ -393,36 +990,53 @@ void Tire_PaintIfWanted(DWORD* RideInfo, DWORD TextureHash)
 		return;
 	}
 
-	TireLockedRect TexRect, MaskRect;
-	long TexResult = 0, MaskResult = 0;
+	DWORD* ColourPart = (DWORD*)RideInfo[356 + CARSLOTID_WHEEL_MANUFACTURER];
 
-	if (!Tire_Lock(Tex, TexRect, TexResult))
+	// Only redo it when something it depends on has changed. The texture is part of that: a pack
+	// unloaded and loaded again hands back fresh pixels in a new texture.
+	if (Tex == TireLastPaintedTexture && ColourPart == TireLastPaintPart) return;
+
+	TireLevel TexTop, MaskTop;
+	char TexFormat[16], MaskFormat[16];
+
+	if (!Tire_LevelLayout(Tex, 0, TexTop) || !Tire_LevelLayout(Mask, 0, MaskTop))
 	{
-		TireNote("paintable tyre %08X skipped: texture LockRect returned %08X\n",
-			(unsigned int)TextureHash, (unsigned int)TexResult);
+		TireNote("paintable tyre %08X skipped: D3D would not describe the texture or the mask\n", (unsigned int)TextureHash);
 		return;
 	}
 
-	if (!Tire_Lock(Mask, MaskRect, MaskResult))
+	int Levels = Tire_LevelCount(Tex);
+
+	TireNote("paintable tyre %08X: texture %s %dx%d with %d level(s), mask %08X %s %dx%d\n",
+		(unsigned int)TextureHash, Tire_FormatName(TexTop.Format, TexFormat), TexTop.Width, TexTop.Height, Levels,
+		(unsigned int)MaskHash, Tire_FormatName(MaskTop.Format, MaskFormat), MaskTop.Width, MaskTop.Height);
+
+	if (TexTop.Kind == TIRE_KIND_NONE || MaskTop.Kind == TIRE_KIND_NONE)
 	{
-		Tire_Unlock(Tex);
-		TireNote("paintable tyre %08X skipped: mask LockRect returned %08X\n",
-			(unsigned int)TextureHash, (unsigned int)MaskResult);
+		TireNote("paintable tyre %08X skipped: %s is not a format this paints. Use A8R8G8B8, X8R8G8B8, DXT1,"
+			" DXT3 or DXT5\n", (unsigned int)TextureHash,
+			TexTop.Kind == TIRE_KIND_NONE ? TexFormat : MaskFormat);
 		return;
 	}
 
-	TirePristine* Copy = nullptr;
-
-	for (auto& C : TirePristineCopies)
-		if (C.TextureInfo == TexInfo && C.Hash == TextureHash && C.Width == W && C.Height == H) { Copy = &C; break; }
+	long Result = 0;
+	int FailedLevel = 0;
+	TirePristine* Copy = Tire_Pristine(Tex, TextureHash, Result, FailedLevel);
 
 	if (!Copy)
 	{
-		TirePristineCopies.push_back({ TexInfo, TextureHash, W, H, std::vector<DWORD>((size_t)W * H) });
-		Copy = &TirePristineCopies.back();
+		TireNote("paintable tyre %08X skipped: level %d could not be read, LockRect returned %08X\n",
+			(unsigned int)TextureHash, FailedLevel, (unsigned int)Result);
+		return;
+	}
 
-		for (int y = 0; y < H; y++)
-			memcpy(&Copy->Pixels[(size_t)y * W], TexRect.Bits + (size_t)y * TexRect.Pitch, (size_t)W * 4);
+	TireCoverage Cover;
+
+	if (!Tire_ReadCoverage(Mask, MaskTop, Cover, Result))
+	{
+		TireNote("paintable tyre %08X skipped: mask LockRect returned %08X\n",
+			(unsigned int)TextureHash, (unsigned int)Result);
+		return;
 	}
 
 	// No colour, or the unused first entry, is the vinyl identity: red stays red.
@@ -436,60 +1050,39 @@ void Tire_PaintIfWanted(DWORD* RideInfo, DWORD TextureHash)
 		CB = TireClamp(CarPart_GetAppliedAttributeUParam(ColourPart, CT_bStringHash("BLUE"), 0));
 	}
 
-	int Covered = 0, CoveredRed = 0;
+	TirePaintStats Stats = {};
+	int Painted = 0;
 
-	for (int y = 0; y < H; y++)
+	for (int Level = 0; Level < (int)Copy->Layout.size(); Level++)
 	{
-		const DWORD* Src = &Copy->Pixels[(size_t)y * W];
-		DWORD* Dst = (DWORD*)(TexRect.Bits + (size_t)y * TexRect.Pitch);
-		const DWORD* M = (const DWORD*)(MaskRect.Bits + (size_t)y * MaskRect.Pitch);
+		const TireLevel& L = Copy->Layout[Level];
+		TireLockedRect Rect;
 
-		for (int x = 0; x < W; x++)
+		if (!Tire_Lock(Tex, Level, L.RowBytes, Rect, Result, 0))
 		{
-			DWORD P = Src[x];
-
-			// A8R8G8B8 in memory: blue, green, red, alpha
-			int b = P & 0xFF, g = (P >> 8) & 0xFF, r = (P >> 16) & 0xFF;
-
-			DWORD MP = M[x];
-			int mb = MP & 0xFF, mg = (MP >> 8) & 0xFF, mr = (MP >> 16) & 0xFF;
-			int Cover = mr > mg ? (mr > mb ? mr : mb) : (mg > mb ? mg : mb); // greyscale, any channel
-
-			if (!Cover) { Dst[x] = P; continue; }
-
-			Covered++;
-			if (r > g + 16 && r > b + 16) CoveredRed++;
-
-			// The vinyl mix with only the first colour set: red becomes the colour, scaled by how red
-			// the pixel was, and green and blue carry on as themselves.
-			int nr = TireClamp(r * CR / 255);
-			int ng = TireClamp(r * CG / 255 + g);
-			int nb = TireClamp(r * CB / 255 + b);
-
-			nr = r + (nr - r) * Cover / 255;
-			ng = g + (ng - g) * Cover / 255;
-			nb = b + (nb - b) * Cover / 255;
-
-			Dst[x] = (P & 0xFF000000) | ((DWORD)nr << 16) | ((DWORD)ng << 8) | (DWORD)nb;
+			TireNote("paintable tyre %08X: level %d LockRect returned %08X, that level keeps what it had\n",
+				(unsigned int)TextureHash, Level, (unsigned int)Result);
+			continue;
 		}
+
+		Tire_PaintLevel(L, Copy->Levels[Level].data(), Rect, Cover, CR, CG, CB, Level == 0, Stats);
+		Tire_Unlock(Tex, Level);
+		Painted++;
 	}
 
-	Tire_Unlock(Mask);
-	Tire_Unlock(Tex);
-
-	TireLastPaintedTexture = TexInfo;
+	TireLastPaintedTexture = Tex;
 	TireLastPaintPart = ColourPart;
 
 	// Said every time the colour changes, since the colour is in the line. Covered 0 means the mask
 	// is black where it should not be; covered but no red means the stripe was not authored in red.
-	TireNote("painted tyre %08X with %s %d,%d,%d: %d of %d pixels under the mask, %d of those red\n",
+	TireNote("painted tyre %08X with %s %d,%d,%d: %d of %d texels under the mask, %d of those red,"
+		" %d of %d level(s), %d DXT block(s) re-encoded\n",
 		(unsigned int)TextureHash, HasColour ? "colour" : "no colour, identity", CR, CG, CB,
-		Covered, W * H, CoveredRed);
+		Stats.Covered, TexTop.Width * TexTop.Height, Stats.CoveredRed, Painted, (int)Copy->Layout.size(), Stats.Recoded);
 
-	if (TireTex_Mips(TexInfo) > 1)
-		TireNote("paintable tyre %08X has %d mip levels and only the first is painted, so the stripe"
-			" shows its authored red from further away. Author it with one level.\n",
-			(unsigned int)TextureHash, TireTex_Mips(TexInfo));
+	if (Stats.KeptTransparent)
+		TireNote("paintable tyre %08X: %d DXT1 block(s) use the transparent texel and were left unpainted."
+			" Save it as DXT5, or as DXT1 without alpha.\n", (unsigned int)TextureHash, Stats.KeptTransparent);
 }
 
 // Once per car per frame, off the front of CarRenderInfo::Render and RenderFast. Resolving here
