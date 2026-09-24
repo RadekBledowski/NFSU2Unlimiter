@@ -1,6 +1,7 @@
 #include "stdio.h"
 #include "InGameFunctions.h"
 #include "PartLink.h"
+#include "HoodDecalTrace.h"
 
 // Two separate things in the game stop a hood decal appearing once a non stock hood is fitted, and
 // either alone is enough, so they are one switch. RideInfo_UpdatePartsEnabled hides the slot named
@@ -574,6 +575,8 @@ void __fastcall RideInfo_UpdatePartsEnabled(DWORD* RideInfo, void* EDX_Unused)
 
     PartLink_Resolve(RideInfo);
     PartLink_ApplyVisibility(RideInfo);
+
+    HoodDecalTraceDump(RideInfo);
 }
 
 void __fastcall RideInfo_SetPart(DWORD* RideInfo, void* EDX_Unused, int CarSlotID, DWORD* CarPartToSet)
