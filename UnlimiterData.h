@@ -751,8 +751,8 @@ void LoadCarConfigs()
 		ACarConfig.Specialties.WindowTint = mINI_ReadInteger(CarINI, "Specialties", "WindowTint", DefaultCarConfig.Specialties.WindowTint) != 0;
 		ACarConfig.Specialties.HeadlightColor = mINI_ReadInteger(CarINI, "Specialties", "HeadlightColor", DefaultCarConfig.Specialties.HeadlightColor) != 0;
 		ACarConfig.Specialties.NosPurge = mINI_ReadInteger(CarINI, "Specialties", "NosPurge", DefaultCarConfig.Specialties.NosPurge) != 0;
-		ACarConfig.Specialties.ExhaustFlame = mINI_ReadInteger(CarINI, "Specialties", "NosPurge", DefaultCarConfig.Specialties.ExhaustFlame) != 0;
-		ACarConfig.Specialties.TireSmoke = mINI_ReadInteger(CarINI, "Specialties", "NosPurge", DefaultCarConfig.Specialties.TireSmoke) != 0;
+		ACarConfig.Specialties.ExhaustFlame = mINI_ReadInteger(CarINI, "Specialties", "ExhaustFlame", DefaultCarConfig.Specialties.ExhaustFlame) != 0;
+		ACarConfig.Specialties.TireSmoke = mINI_ReadInteger(CarINI, "Specialties", "TireSmoke", DefaultCarConfig.Specialties.TireSmoke) != 0;
 		ACarConfig.Specialties.Hydrualics = mINI_ReadInteger(CarINI, "Specialties", "Hydrualics", DefaultCarConfig.Specialties.Hydrualics) != 0;
 		ACarConfig.Specialties.TrunkAudio = mINI_ReadInteger(CarINI, "Specialties", "TrunkAudio", DefaultCarConfig.Specialties.TrunkAudio) != 0;
 		ACarConfig.Specialties.Spinners = mINI_ReadInteger(CarINI, "Specialties", "Spinners", DefaultCarConfig.Specialties.Spinners) != 0;
