@@ -276,16 +276,25 @@ void __fastcall RideInfo_UpdatePartsEnabled(DWORD* RideInfo, void* EDX_Unused)
                                 else sprintf(KitNameBuf, "%s_STYLE%02d_", GetCarTypeName(CarType), j);
                                 DWORD DecalNamePartialHash = bStringHash(KitNameBuf);
 
+                                // Only take the hood's own layout when it has one. Almost no car
+                                // ships <CAR>_STYLE<NN>_DECAL_HOOD_RECT_*, only the shared
+                                // <CAR>_DECAL_HOOD_RECT_MEDIUM and _SMALL, so on an aftermarket hood
+                                // this lookup misses and used to write the miss straight into the
+                                // slot. That blanked the layout the car already had, and with no
+                                // layout there is nothing for a decal texture to sit on: the Decal
+                                // Shop still offered one and the car showed nothing.
+                                DWORD* NewHoodDecalPart = nullptr;
+
                                 if (*HoodDecalPart == bStringHash2("DECAL_HOOD_RECT_MEDIUM", DecalNamePartialHash)) // Layout 1
-                                {
-                                    RideInfo[356 + CARSLOTID_DECAL_HOOD] = (DWORD)CarPartDatabase_NewGetCarPart((DWORD*)_CarPartDB, CarType, CARSLOTID_DECAL_HOOD, bStringHash2("DECAL_HOOD_RECT_MEDIUM", KitNamePartialHash), 0, -1);
-                                    break;
-                                }
+                                    NewHoodDecalPart = CarPartDatabase_NewGetCarPart((DWORD*)_CarPartDB, CarType, CARSLOTID_DECAL_HOOD, bStringHash2("DECAL_HOOD_RECT_MEDIUM", KitNamePartialHash), 0, -1);
                                 else if (*HoodDecalPart == bStringHash2("DECAL_HOOD_RECT_SMALL", DecalNamePartialHash)) // Layout 2
-                                {
-                                    RideInfo[356 + CARSLOTID_DECAL_HOOD] = (DWORD)CarPartDatabase_NewGetCarPart((DWORD*)_CarPartDB, CarType, CARSLOTID_DECAL_HOOD, bStringHash2("DECAL_HOOD_RECT_SMALL", KitNamePartialHash), 0, -1);
-                                    break;
-                                }
+                                    NewHoodDecalPart = CarPartDatabase_NewGetCarPart((DWORD*)_CarPartDB, CarType, CARSLOTID_DECAL_HOOD, bStringHash2("DECAL_HOOD_RECT_SMALL", KitNamePartialHash), 0, -1);
+                                else
+                                    continue;
+
+                                if (NewHoodDecalPart) RideInfo[356 + CARSLOTID_DECAL_HOOD] = (DWORD)NewHoodDecalPart;
+
+                                break;
                             }
                         }
 
