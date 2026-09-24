@@ -2,6 +2,7 @@
 
 #include "stdio.h"
 #include <vector>
+#include <string>
 #include "InGameFunctions.h"
 #include "GlobalVariables.h"
 #include "CarSlotID.h"
@@ -192,7 +193,30 @@ bool Tire_IsPartListable(DWORD* Part, int Slot)
 	return (DWORD)CarPart_GetCarTypeNameHash(Part) == TirePartsCollection;
 }
 
-bool TireTextureMissingLogged = false;
+
+// Each distinct probe line is written once. A one shot flag per message was not enough: the first
+// car through, often a preview with no tyre part at all, used it up and every later car, the one
+// actually being looked at included, went unreported. Keeping the lines themselves means each car
+// and each outcome gets said once however many cars alternate every frame.
+std::vector<std::string> TireNotesWritten;
+
+void TireNote(const char* fmt, ...)
+{
+	if (!TireMaterialProbe) return;
+	if (TireNotesWritten.size() >= 400) return;
+
+	char Line[512];
+	va_list args;
+	va_start(args, fmt);
+	vsnprintf(Line, sizeof(Line), fmt, args);
+	va_end(args);
+
+	for (auto& L : TireNotesWritten)
+		if (L == Line) return;
+
+	TireNotesWritten.push_back(Line);
+	TireProbeLine("%s", Line);
+}
 
 // PAINTABLE TYRES, coloured the way vinyls are.
 //
@@ -232,6 +256,10 @@ bool TireTextureMissingLogged = false;
 // same calls TextureInfoPlatInterface::LockImage (0x5B96A0) and sub_5B96D0 make. The game's wrapper
 // throws away both the HRESULT and the row pitch; this needs the first to know the pointer is real
 // and the second to walk rows correctly.
+//
+// Textures are looked up with GetTextureInfo(hash, 0, 0), which returns null for a texture no loaded
+// pack holds. With 1 as the second argument it hands back DefaultTextureInfo instead (0x4902AF),
+// which would be painted in place of the real thing.
 
 #define TireTex_Format(t)  (*(BYTE*)((BYTE*)(t) + 0x4A))
 #define TireTex_Width(t)   (*(short*)((BYTE*)(t) + 0x44))
@@ -254,16 +282,16 @@ void* Tire_D3DTexture(void* TextureInfo)
 	return Tire_ValidPtr(Texture) ? Texture : nullptr;
 }
 
-bool Tire_Lock(void* Texture, TireLockedRect& Rect)
+bool Tire_Lock(void* Texture, TireLockedRect& Rect, long& Result)
 {
 	typedef long(__stdcall* LockRectFn)(void*, unsigned int, TireLockedRect*, const void*, unsigned long);
 
 	Rect.Pitch = 0;
 	Rect.Bits = nullptr;
 
-	long hr = ((LockRectFn)(*(void***)Texture)[0x4C / 4])(Texture, 0, &Rect, nullptr, 0);
+	Result = ((LockRectFn)(*(void***)Texture)[0x4C / 4])(Texture, 0, &Rect, nullptr, 0);
 
-	return hr >= 0 && Rect.Bits && Rect.Pitch > 0;
+	return Result >= 0 && Rect.Bits && Rect.Pitch > 0;
 }
 
 void Tire_Unlock(void* Texture)
@@ -285,15 +313,6 @@ std::vector<TirePristine> TirePristineCopies;
 
 void* TireLastPaintedTexture = nullptr;
 DWORD* TireLastPaintPart = nullptr;
-bool TirePaintProblemLogged = false;
-
-void Tire_PaintLogOnce(const char* fmt, DWORD Hash, int A, int B)
-{
-	if (TirePaintProblemLogged) return;
-
-	TirePaintProblemLogged = true;
-	TireProbeLine(fmt, (unsigned int)Hash, A, B);
-}
 
 static inline int TireClamp(int v) { return v < 0 ? 0 : (v > 255 ? 255 : v); }
 
@@ -304,17 +323,34 @@ void Tire_PaintIfWanted(DWORD* RideInfo, DWORD TextureHash)
 	DWORD* Part = (DWORD*)RideInfo[356 + TIRE_CAR_SLOT];
 
 	if (!Tire_ValidPtr(Part)) return;
-	if (!CarPart_GetAppliedAttributeUParam(Part, TIRE_ATTR_PAINTABLE, 0)) return;
 
+	if (!CarPart_GetAppliedAttributeUParam(Part, TIRE_ATTR_PAINTABLE, 0))
+	{
+		TireNote("tyre part %08X, texture %08X: no PAINTABLE attribute, left as it is\n",
+			(unsigned int)Part[0], (unsigned int)TextureHash);
+		return;
+	}
+
+	DWORD MaskHash = bStringHash2("_MASK", TextureHash);
 	void* TexInfo = GetTextureInfo(TextureHash, 0, 0);
-	void* MaskInfo = GetTextureInfo(bStringHash2("_MASK", TextureHash), 0, 0);
+	void* MaskInfo = GetTextureInfo(MaskHash, 0, 0);
 
-	if (!TexInfo || !MaskInfo) return; // PAINTABLE without a mask stays a plain tyre
+	if (!TexInfo || !MaskInfo)
+	{
+		TireNote("paintable tyre %08X: texture %s, mask %08X %s in any loaded pack, nothing to paint\n",
+			(unsigned int)TextureHash, TexInfo ? "found" : "NOT found",
+			(unsigned int)MaskHash, MaskInfo ? "found" : "NOT found");
+		return;
+	}
+
+	TireNote("paintable tyre %08X: texture %p format %d %dx%d mips %d, mask %08X %p format %d %dx%d\n",
+		(unsigned int)TextureHash, TexInfo, TireTex_Format(TexInfo), TireTex_Width(TexInfo),
+		TireTex_Height(TexInfo), TireTex_Mips(TexInfo), (unsigned int)MaskHash, MaskInfo,
+		TireTex_Format(MaskInfo), TireTex_Width(MaskInfo), TireTex_Height(MaskInfo));
 
 	if (TireTex_Format(TexInfo) != TIRE_TEXTURE_32BIT || TireTex_Format(MaskInfo) != TIRE_TEXTURE_32BIT)
 	{
-		Tire_PaintLogOnce("paintable tyre 0x%08X skipped: texture format %d and mask format %d, both"
-			" have to be 32 bit.\n", TextureHash, TireTex_Format(TexInfo), TireTex_Format(MaskInfo));
+		TireNote("paintable tyre %08X skipped: both have to be format 32, 32 bit\n", (unsigned int)TextureHash);
 		return;
 	}
 
@@ -322,8 +358,7 @@ void Tire_PaintIfWanted(DWORD* RideInfo, DWORD TextureHash)
 
 	if (W <= 0 || H <= 0 || W != TireTex_Width(MaskInfo) || H != TireTex_Height(MaskInfo))
 	{
-		Tire_PaintLogOnce("paintable tyre 0x%08X skipped: texture is %d wide and the mask %d, the"
-			" two have to match in both directions.\n", TextureHash, W, TireTex_Width(MaskInfo));
+		TireNote("paintable tyre %08X skipped: texture and mask have to be the same size\n", (unsigned int)TextureHash);
 		return;
 	}
 
@@ -336,20 +371,28 @@ void Tire_PaintIfWanted(DWORD* RideInfo, DWORD TextureHash)
 	void* Tex = Tire_D3DTexture(TexInfo);
 	void* Mask = Tire_D3DTexture(MaskInfo);
 
-	if (!Tex || !Mask) return;
-
-	TireLockedRect TexRect, MaskRect;
-
-	if (!Tire_Lock(Tex, TexRect))
+	if (!Tex || !Mask)
 	{
-		Tire_PaintLogOnce("paintable tyre 0x%08X skipped: the texture would not lock.\n", TextureHash, 0, 0);
+		TireNote("paintable tyre %08X skipped: no D3D texture behind it (texture %p, mask %p)\n",
+			(unsigned int)TextureHash, Tex, Mask);
 		return;
 	}
 
-	if (!Tire_Lock(Mask, MaskRect))
+	TireLockedRect TexRect, MaskRect;
+	long TexResult = 0, MaskResult = 0;
+
+	if (!Tire_Lock(Tex, TexRect, TexResult))
+	{
+		TireNote("paintable tyre %08X skipped: texture LockRect returned %08X\n",
+			(unsigned int)TextureHash, (unsigned int)TexResult);
+		return;
+	}
+
+	if (!Tire_Lock(Mask, MaskRect, MaskResult))
 	{
 		Tire_Unlock(Tex);
-		Tire_PaintLogOnce("paintable tyre 0x%08X skipped: its mask would not lock.\n", TextureHash, 0, 0);
+		TireNote("paintable tyre %08X skipped: mask LockRect returned %08X\n",
+			(unsigned int)TextureHash, (unsigned int)MaskResult);
 		return;
 	}
 
@@ -369,13 +412,16 @@ void Tire_PaintIfWanted(DWORD* RideInfo, DWORD TextureHash)
 
 	// No colour, or the unused first entry, is the vinyl identity: red stays red.
 	int CR = 255, CG = 0, CB = 0;
+	bool HasColour = Tire_ValidPtr(ColourPart) && ColourPart[0] != CT_bStringHash("VINYL_L1_COLOR01");
 
-	if (Tire_ValidPtr(ColourPart) && ColourPart[0] != CT_bStringHash("VINYL_L1_COLOR01"))
+	if (HasColour)
 	{
 		CR = TireClamp(CarPart_GetAppliedAttributeUParam(ColourPart, CT_bStringHash("RED"), 0));
 		CG = TireClamp(CarPart_GetAppliedAttributeUParam(ColourPart, CT_bStringHash("GREEN"), 0));
 		CB = TireClamp(CarPart_GetAppliedAttributeUParam(ColourPart, CT_bStringHash("BLUE"), 0));
 	}
+
+	int Covered = 0, CoveredRed = 0;
 
 	for (int y = 0; y < H; y++)
 	{
@@ -395,6 +441,9 @@ void Tire_PaintIfWanted(DWORD* RideInfo, DWORD TextureHash)
 			int Cover = mr > mg ? (mr > mb ? mr : mb) : (mg > mb ? mg : mb); // greyscale, any channel
 
 			if (!Cover) { Dst[x] = P; continue; }
+
+			Covered++;
+			if (r > g + 16 && r > b + 16) CoveredRed++;
 
 			// The vinyl mix with only the first colour set: red becomes the colour, scaled by how red
 			// the pixel was, and green and blue carry on as themselves.
@@ -416,10 +465,16 @@ void Tire_PaintIfWanted(DWORD* RideInfo, DWORD TextureHash)
 	TireLastPaintedTexture = TexInfo;
 	TireLastPaintPart = ColourPart;
 
+	// Said every time the colour changes, since the colour is in the line. Covered 0 means the mask
+	// is black where it should not be; covered but no red means the stripe was not authored in red.
+	TireNote("painted tyre %08X with %s %d,%d,%d: %d of %d pixels under the mask, %d of those red\n",
+		(unsigned int)TextureHash, HasColour ? "colour" : "no colour, identity", CR, CG, CB,
+		Covered, W * H, CoveredRed);
+
 	if (TireTex_Mips(TexInfo) > 1)
-		Tire_PaintLogOnce("paintable tyre 0x%08X has %d mip levels and only the first is painted, so"
-			" the stripe shows its authored red from further away. Author it with one level.\n",
-			TextureHash, TireTex_Mips(TexInfo), 0);
+		TireNote("paintable tyre %08X has %d mip levels and only the first is painted, so the stripe"
+			" shows its authored red from further away. Author it with one level.\n",
+			(unsigned int)TextureHash, TireTex_Mips(TexInfo));
 }
 
 // Once per car per frame, off the front of CarRenderInfo::Render and RenderFast. Resolving here
@@ -432,37 +487,29 @@ void __cdecl Tire_SetCurrentCar(DWORD* CarRenderInfo)
 
 	Tire_PaintIfWanted(RideInfo, Hash);
 
-	TireCurrentTexture = Hash ? GetTextureInfo(Hash, 1, 0) : nullptr;
+	// 0 as the second argument, so a texture no pack holds comes back null and the tyre keeps its
+	// own texture. With 1 the game substitutes DefaultTextureInfo (0x4902AF), which would put the
+	// missing texture placeholder on the tyre and, being never null, kept the not loaded note below
+	// from ever firing.
+	TireCurrentTexture = Hash ? GetTextureInfo(Hash, 0, 0) : nullptr;
 	TireHookLive = (TireCurrentTexture || TireMaterialProbe) ? 1 : 0;
 
-	// Saying nothing when the hash is zero was a hole: a car with no tyre part and a tyre part with
-	// no TEXTURE_NAME both left the probe silent, and a silent log looks the same as a texture that
-	// simply is not loaded. Each of the three gets its own line now, once each.
-	if (!TireTextureMissingLogged && RideInfo && !TireTextureOverride)
-	{
-		DWORD* Part = (DWORD*)RideInfo[356 + TIRE_CAR_SLOT];
+	if (!RideInfo || TireTextureOverride) return;
 
-		if (!Part)
-		{
-			TireTextureMissingLogged = true;
-			TireProbeLine("no tyre part is installed in slot %d, so there is nothing to take a"
-				" texture from. Fit one from the Tires category first.\n", TIRE_CAR_SLOT);
-		}
-		else if (!Hash)
-		{
-			TireTextureMissingLogged = true;
-			TireProbeLine("the tyre part in slot %d carries no TEXTURE_NAME attribute, so it names"
-				" no texture. The part needs TEXTURE_NAME the way a rim part does, pointing at the"
-				" texture to draw.\n", TIRE_CAR_SLOT);
-		}
-		else if (!TireCurrentTexture)
-		{
-			TireTextureMissingLogged = true;
-			TireProbeLine("tyre texture 0x%08X is in no pack that is loaded right now, so the tyre"
-				" keeps its own texture. The texture has to reach the car the way a vinyl or a rim"
-				" texture does.\n", (unsigned int)Hash);
-		}
-	}
+	DWORD* Part = (DWORD*)RideInfo[356 + TIRE_CAR_SLOT];
+
+	// Each is said once per car type rather than once for the whole game, so a preview with no tyre
+	// part cannot use up the line for the car actually being looked at.
+	if (!Part)
+		TireNote("car type %d: no tyre part in slot %d\n", RideInfo[0], TIRE_CAR_SLOT);
+	else if (!Hash)
+		TireNote("car type %d: tyre part %08X carries no TEXTURE_NAME, so it names no texture\n",
+			RideInfo[0], (unsigned int)Part[0]);
+	else if (!TireCurrentTexture)
+		TireNote("car type %d: tyre texture %08X is in no loaded pack, the tyre keeps its own. It has"
+			" to reach the car the way a vinyl or a rim texture does.\n", RideInfo[0], (unsigned int)Hash);
+	else
+		TireNote("car type %d: tyre part %08X draws texture %08X\n", RideInfo[0], (unsigned int)Part[0], (unsigned int)Hash);
 }
 
 // Runs for every mesh the game draws while a tyre texture is live, so it gets out of the way as
