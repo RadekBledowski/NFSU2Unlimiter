@@ -386,12 +386,15 @@ CameraInfo* __cdecl FindPartCameraInfo(int CarSlotID, int IsSUV, int IsHummer, D
 	int CameraInfoID; // edx
 	int i; // ecx
 
-	// GarageMainScreen::SetAutoRotateParams comes through here from HandleTick even when there is
-	// no car being customized. Joining an online lobby it arrived with CarSlotID 0x40302010 and a
-	// null FECarConfig. The game's own version never looks at the car and simply finds no such slot
-	// in its table (0x4A55BE), so do the same: nothing for a slot that is not one, and no per car
-	// lookup without a car.
-	if (CarSlotID < 0 || CarSlotID >= CARSLOTID_NUM) return 0;
+	// GarageMainScreen::HandleTick comes through here to auto rotate an idle car, even when there is
+	// no car being customized: in an online lobby's car preview FECarConfig is null. The game's own
+	// version never looks at the car, so without one skip the per car lookup and use its table.
+	//
+	// The slot is not always a slot. The idle rotation only picks table entries with IsAnim set,
+	// and those carry 0x40302010 to 0x40302016 (ANIM0 to ANIM6) as their CarSlotID. The table
+	// search below finds them like any other entry, and GetCarSlotIDName names them for the per car
+	// files, so they must not be turned away as out of range: SetAutoRotateParams then leaves the
+	// wheel steer it interpolates unset, and the front wheels turn to whatever was in memory.
 
 	// Read Part Options for the car
 	DWORD FECarConfig = *(DWORD*)_FECarConfigRef;
