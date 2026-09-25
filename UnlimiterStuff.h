@@ -78,6 +78,7 @@ char AttachmentNameBuf[64];
 #include "UnlimiterData.h"
 #include "CodeCaves.h"
 #include "Game.h"
+#include "NetCarData.h"
 
 int Init()
 {
@@ -722,6 +723,7 @@ int Init()
 	InitPresetCars();
 	InitEngineSFXGuard();
 	InitAIEngineBank();
+	InitNetCarData();
 	
 	if (BigFileVFSHandlePoolSize > 127) BigFileVFSHandlePoolSize = 64;
 	injector::WriteMemory<BYTE>(0x486531, BigFileVFSHandlePoolSize, true);
