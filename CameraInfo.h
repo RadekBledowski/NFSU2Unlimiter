@@ -386,15 +386,26 @@ CameraInfo* __cdecl FindPartCameraInfo(int CarSlotID, int IsSUV, int IsHummer, D
 	int CameraInfoID; // edx
 	int i; // ecx
 
+	// GarageMainScreen::SetAutoRotateParams comes through here from HandleTick even when there is
+	// no car being customized. Joining an online lobby it arrived with CarSlotID 0x40302010 and a
+	// null FECarConfig. The game's own version never looks at the car and simply finds no such slot
+	// in its table (0x4A55BE), so do the same: nothing for a slot that is not one, and no per car
+	// lookup without a car.
+	if (CarSlotID < 0 || CarSlotID >= CARSLOTID_NUM) return 0;
+
 	// Read Part Options for the car
 	DWORD FECarConfig = *(DWORD*)_FECarConfigRef;
-	int CarTypeID = (*(int(__thiscall**)(int))(*(DWORD*)FECarConfig + 4))(FECarConfig);
 
-	// Get camera info from config files
-	CameraInfo* result = (CarSlotID >= CARSLOTID_VINYL_LAYER0 && CarSlotID <= CARSLOTID_VINYL_LAYER3) 
-		? GetVinylCameraInfo(CarTypeID, TheCarPart) 
-		: GetPartCameraInfo(CarTypeID, CarSlotID);
-	if (result) return result;
+	if (FECarConfig)
+	{
+		int CarTypeID = (*(int(__thiscall**)(int))(*(DWORD*)FECarConfig + 4))(FECarConfig);
+
+		// Get camera info from config files
+		CameraInfo* result = (CarSlotID >= CARSLOTID_VINYL_LAYER0 && CarSlotID <= CARSLOTID_VINYL_LAYER3)
+			? GetVinylCameraInfo(CarTypeID, TheCarPart)
+			: GetPartCameraInfo(CarTypeID, CarSlotID);
+		if (result) return result;
+	}
 
 	// If not found, use vanilla implementation:
 	if (IsSUV && IsHummer && (CarSlotID == CARSLOTID_ENGINE || CarSlotID == CARSLOTID_NEON_ENGINE || CarSlotID == CARSLOTID_PAINT_ENGINE))
