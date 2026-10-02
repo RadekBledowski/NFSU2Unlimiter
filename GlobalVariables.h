@@ -1024,7 +1024,31 @@ struct CarConfig
 };
 
 CarConfig DefaultCarConfig;
-std::vector<CarConfig> CarConfigs;
+
+// Indexed all over the place with a car type that came out of a RideInfo, and a RideInfo does not
+// always hold a car. One that has not been filled in yet is -1 (RideInfo::Init only stores what it
+// is given, and an empty ride is built with -1), which is what an online player's car is in the
+// game room until it arrives, and what a car that could not be read is left as. The game's own
+// code never indexes anything with it, it only does pointer arithmetic, but a plain vector reads
+// 0BCCh bytes in front of its storage and falls over. An id outside the list gets the defaults.
+struct CarConfigList : std::vector<CarConfig>
+{
+	template <class T>
+	CarConfig& operator[](T CarTypeID)
+	{
+		size_t Index = (size_t)CarTypeID; // a negative id becomes a huge one
+
+		return Index < size() ? std::vector<CarConfig>::operator[](Index) : DefaultCarConfig;
+	}
+
+	CarConfigList& operator=(std::vector<CarConfig>&& Other)
+	{
+		std::vector<CarConfig>::operator=(std::move(Other));
+		return *this;
+	}
+};
+
+CarConfigList CarConfigs;
 
 // _FNGFixes.ini
 struct Child

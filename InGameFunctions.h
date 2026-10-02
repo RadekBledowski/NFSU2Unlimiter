@@ -8,8 +8,28 @@
 
 DWORD(*bStringHash)(char const* StringToHash) = (DWORD(*)(char const*))0x43DB50;
 DWORD(*bStringHash2)(char const* StringToHash, int PartialHash) = (DWORD(*)(char const*, int))0x43DB80;
-char* (*GetCarTypeName)(int CarTypeID) = (char* (*)(int))0x610110;
-DWORD* (*GetCarTypeInfo)(int CarTypeID) = (DWORD * (*)(int))0x610110;
+DWORD* (*GetCarTypeInfo_Game)(int CarTypeID) = (DWORD * (*)(int))0x610110;
+
+extern int CarCount, ReplacementCar; // UnlimiterStuff.h
+
+// The game's version is CarTypeInfoArray + id * 890h and nothing more, so a car type of -1, which
+// is what an empty RideInfo holds, comes back pointing at whatever is in memory in front of the
+// array. The name sits at the start of the entry and is printed into 64 byte buffers with sprintf
+// (CarRenderInfo.h), so a bad id was an overflow waiting for a string with no terminator. An id the
+// array does not have gets the replacement car's entry, the one the game falls back to for a model
+// it cannot find, so that what is read is at least a real name.
+DWORD* GetCarTypeInfo(int CarTypeID)
+{
+	if (CarTypeID < 0 || CarTypeID >= CarCount)
+		CarTypeID = (ReplacementCar >= 0 && ReplacementCar < CarCount) ? ReplacementCar : 0;
+
+	return GetCarTypeInfo_Game(CarTypeID);
+}
+
+char* GetCarTypeName(int CarTypeID)
+{
+	return (char*)GetCarTypeInfo(CarTypeID);
+}
 DWORD* (*GetCarTypeInfoFromHash)(DWORD CarTypeNameHash) = (DWORD * (*)(DWORD))0x610130;
 int(*GetCarPartFromSlot_Game)(int CarSlotID) = (int(*)(int))0x60FEE0;
 int(*ShowTrunkUnderInFE_Game)(int CarTypeID) = (int(*)(int))0x60C8F0;

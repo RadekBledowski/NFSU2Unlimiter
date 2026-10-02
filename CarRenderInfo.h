@@ -1199,6 +1199,15 @@ void GetUsedCarTextureInfo(UsedCarTextureInfo* info, DWORD* ride_info, int front
 	return;
 	*/
 
+	// A ride with no car in it asks for no textures. This is reached from LoadedSkin's constructor
+	// for the online game room's preview, which is built for a player before that player's car has
+	// arrived, and the car type is still -1 then.
+	if ((int)ride_info[0] < 0 || (int)ride_info[0] >= CarCount)
+	{
+		memset(info, 0, sizeof(UsedCarTextureInfo));
+		return;
+	}
+
 	char* CarTypeName = GetCarTypeName(ride_info[0]);
 	int NumUsedCarTextures = 0;
 	int NumTempUsedCarTextures = 0;
