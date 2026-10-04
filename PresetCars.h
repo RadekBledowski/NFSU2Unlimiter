@@ -27,7 +27,8 @@
 //
 // The game data contains a linked list of PresetCar entries (DDAY_PLAYER_CAR, CALEB_GTO,
 // SNOOP_DOGG, the DEMO_* presets, ...). Only the sponsor subset is normally reachable, and only
-// in Quick Race after typing a cheat. This exposes all of them as an extra car-select category.
+// in Quick Race after typing a cheat. This exposes all of them as an extra car-select category,
+// separately for customize, quick race (and splitscreen), and online (and LAN).
 //
 // The original hooks were raw naked-asm patches over the C stubs. Here the dispatch logic lives
 // in plain C++ and the naked stubs only do the register shuffling that cannot be expressed in C,
@@ -72,9 +73,11 @@ char PresetGroupNames[PARTLINK_MAX_PRESET_GROUPS][64] =
 // Customizing, from the garage or from an online lobby
 #define MENU_STATES_CUSTOMIZE (MENU_STATE_CAR_CUSTOMIZE | MENU_STATE_CUSTOMIZE_FROM_ONLINE_MAIN_MENU)
 
-// Car select outside the career: quick race, splitscreen, online and LAN
-#define MENU_STATES_CARSELECT (MENU_STATE_MAIN_MENU | MENU_STATE_2P_SPLITSCREEN \
-	| MENU_STATE_ONLINE_MAIN_MENU | MENU_STATE_LAN_MAIN_MENU)
+// Car select outside the career, in two halves because each has its own setting: quick race and
+// splitscreen, and online and LAN
+#define MENU_STATES_QUICKRACE (MENU_STATE_MAIN_MENU | MENU_STATE_2P_SPLITSCREEN)
+#define MENU_STATES_ONLINE (MENU_STATE_ONLINE_MAIN_MENU | MENU_STATE_LAN_MAIN_MENU)
+#define MENU_STATES_CARSELECT (MENU_STATES_QUICKRACE | MENU_STATES_ONLINE)
 
 #define MSG_CARSELECT_PREV 0x5073EF13
 #define MSG_CARSELECT_NEXT 0xD9FEEC59
@@ -388,6 +391,17 @@ int PresetGroupCount(DWORD Flags); // defined further down
 // The rotation used to be two mirrored switch statements with a fall-through chain, which cannot
 // grow past one preset category. It is now an ordered list built per call from whatever actually
 // has cars in it, so adding a group needs no code.
+// Whether the car select of the menu we are in offers the preset categories. Online and LAN have
+// a setting of their own: they used to ride on the quick race one, which left no way to have
+// presets in one and not the other.
+bool PresetsOfferedInCarSelect(DWORD MenuState)
+{
+	if (MenuState & MENU_STATES_ONLINE) return PresetCarsInOnline;
+	if (MenuState & MENU_STATES_QUICKRACE) return PresetCarsInQuickRace;
+
+	return false;
+}
+
 int PresetBuildCategoryOrder(DWORD* UIQRCarSelect, bool InQuickRace, DWORD* Out)
 {
 	int n = 0;
@@ -412,9 +426,12 @@ int __fastcall UIQRCarSelect_ScrollLists(DWORD* UIQRCarSelect, void* EDX_Unused,
 	DWORD MenuState = profileMenuState;
 
 	bool InCustomize = (MenuState & MENU_STATES_CUSTOMIZE) && PresetCarsInCustomize;
-	bool InQuickRace = (MenuState & MENU_STATES_CARSELECT) && PresetCarsInQuickRace;
+	bool InCarSelect = (MenuState & MENU_STATES_CARSELECT) && PresetsOfferedInCarSelect(MenuState);
 
-	if (!InCustomize && !InQuickRace) return 0;
+	if (!InCustomize && !InCarSelect) return 0;
+
+	// The career cars are only added to the quick race list. Online the game does not offer them.
+	bool InQuickRace = (MenuState & MENU_STATES_QUICKRACE) && PresetCarsInQuickRace;
 
 	DWORD Order[8 + PARTLINK_MAX_PRESET_GROUPS];
 	int Count = PresetBuildCategoryOrder(UIQRCarSelect, InQuickRace, Order);
@@ -489,8 +506,8 @@ int PresetGroupCount(DWORD Flags)
 // 0x534850 FEPlayerCarDB::GetNumCarsForFilter
 int __stdcall CountAvailablePresetCars(DWORD Flags)
 {
-	// Outside the customize menu the category must not stick around unless quick race support is
-	// on, otherwise the player can carry it into a menu that cannot handle it.
+	// Outside the customize menu the category must not stick around unless the setting for the menu
+	// we are in is on, otherwise the player can carry it into a menu that cannot handle it.
 	DWORD MenuState = profileMenuState;
 
 	if (MenuState & MENU_STATES_CUSTOMIZE)
@@ -499,7 +516,7 @@ int __stdcall CountAvailablePresetCars(DWORD Flags)
 	}
 	else if (MenuState & MENU_STATES_CARSELECT)
 	{
-		if (!PresetCarsInQuickRace) return 0;
+		if (!PresetsOfferedInCarSelect(MenuState)) return 0;
 	}
 	else return 0;
 
@@ -996,7 +1013,7 @@ void InitPresetCars()
 		injector::MakeJMP(0x579D70, IsPresetUnlocked_AlwaysTrue, true); // EasterEggs::IsPresetUnlocked
 	}
 
-	if (!PresetCarsInCustomize && !PresetCarsInQuickRace) return;
+	if (!PresetCarsInCustomize && !PresetCarsInQuickRace && !PresetCarsInOnline) return;
 
 	injector::MakeJMP(0x4EED10, UIQRCarSelect_ScrollListsCodeCave, true);              // UIQRCarSelect::ChangeCategory
 	injector::MakeJMP(0x4B2855, UIQRCarSelect_RefreshHeaderCodeCave, true);            // UIQRCarSelect::UpdateUI (tail)
@@ -1017,7 +1034,10 @@ void InitPresetCars()
 		injector::MakeJMP(0x552DBB, BeginCarCustomize_SetCarInstanceIfMissingCodeCave, true);       // CustomizeCar
 	}
 
-	if (PresetCarsInQuickRace)
+	// Going in-game with a preset picked. Online reaches its car through BuildCurrentRideForPlayer
+	// instead, which finds a preset through the GetCarRecordByHandle patch above, but a race
+	// started from a lobby can end up here as well.
+	if (PresetCarsInQuickRace || PresetCarsInOnline)
 	{
 		injector::MakeJMP(0x525FBB, FindPresetCarWhenTuningForIngameCarCodeCave, true);        // RaceStarter
 	}
