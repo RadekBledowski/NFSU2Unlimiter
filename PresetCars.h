@@ -408,7 +408,12 @@ bool PresetsOfferedInCarSelect(DWORD MenuState)
 	return false;
 }
 
-int PresetBuildCategoryOrder(DWORD* UIQRCarSelect, bool InQuickRace, DWORD* Out)
+// The game's own order, from UIQRCarSelect::ScrollLists (0x4EED10), with the preset groups after it.
+// Quick race goes stock and tuned, stock, tuned, career, sponsor. Online and LAN go stock and tuned,
+// stock, tuned, online cars, career (0x4EEE35): the online cars are the ranked slots, each tied to a
+// race mode, and the game offers them whether or not any are set. Leaving them out of this list
+// took them out of the online car select.
+int PresetBuildCategoryOrder(DWORD* UIQRCarSelect, bool InCarSelect, bool Online, DWORD* Out)
 {
 	int n = 0;
 
@@ -416,7 +421,8 @@ int PresetBuildCategoryOrder(DWORD* UIQRCarSelect, bool InQuickRace, DWORD* Out)
 	Out[n++] = 1;     // IS_STOCK_CAR
 
 	if (UIQRCarSelect_GetNumberOfCarsForFilter(UIQRCarSelect, 2)) Out[n++] = 2; // tuned
-	if (InQuickRace && UIQRCarSelect_GetNumberOfCarsForFilter(UIQRCarSelect, 4)) Out[n++] = 4; // career
+	if (Online) Out[n++] = 0x10; // online cars
+	if (InCarSelect && UIQRCarSelect_GetNumberOfCarsForFilter(UIQRCarSelect, 4)) Out[n++] = 4; // career
 
 	// The game's own SPONSOR CARS category is left out on purpose: the sponsor cars are part of
 	// the preset list, so keeping it would show every one of them twice.
@@ -426,8 +432,9 @@ int PresetBuildCategoryOrder(DWORD* UIQRCarSelect, bool InQuickRace, DWORD* Out)
 	return n;
 }
 
-// Returns 1 if the rotation was handled here, 0 to fall through to the game's own code.
-int __fastcall UIQRCarSelect_ScrollLists(DWORD* UIQRCarSelect, void* EDX_Unused, DWORD Message)
+// The category to move to, or 0 to leave the rotation to the game's own code. Only the choice is
+// made here: the change itself goes through the game's tail of ScrollLists (see the code cave).
+DWORD __fastcall UIQRCarSelect_NextCategory(DWORD* UIQRCarSelect, void* EDX_Unused, DWORD Message)
 {
 	DWORD MenuState = profileMenuState;
 
@@ -436,11 +443,10 @@ int __fastcall UIQRCarSelect_ScrollLists(DWORD* UIQRCarSelect, void* EDX_Unused,
 
 	if (!InCustomize && !InCarSelect) return 0;
 
-	// The career cars are only added to the quick race list. Online the game does not offer them.
-	bool InQuickRace = (MenuState & MENU_STATES_QUICKRACE) && PresetCarsInQuickRace;
+	bool Online = (MenuState & MENU_STATES_ONLINE) != 0;
 
 	DWORD Order[8 + PARTLINK_MAX_PRESET_GROUPS];
-	int Count = PresetBuildCategoryOrder(UIQRCarSelect, InQuickRace, Order);
+	int Count = PresetBuildCategoryOrder(UIQRCarSelect, InCarSelect, Online, Order);
 
 	if (Count < 2) return 0;
 
@@ -454,14 +460,28 @@ int __fastcall UIQRCarSelect_ScrollLists(DWORD* UIQRCarSelect, void* EDX_Unused,
 	else if (Message == MSG_CARSELECT_PREV) At = (At + Count - 1) % Count;
 	else return 0;
 
-	SetCarSelectCategory(Order[At]);
-	UIQRCarSelect_RebuildCarListFromFilter(UIQRCarSelect);
-	UIQRCarSelect_RefreshHeader(UIQRCarSelect);
+	return Order[At];
+}
 
-	return 1;
+void __stdcall UIQRCarSelect_PostRefreshHeader(DWORD* UIQRCarSelect); // defined further down
+
+// Runs once the game has made the change: its tail sets the race mode plate's visibility after
+// RefreshHeader, so a name put on the plate there would be hidden again straight away.
+void __stdcall UIQRCarSelect_AfterCategoryChange(DWORD* UIQRCarSelect)
+{
+	UIQRCarSelect_PostRefreshHeader(UIQRCarSelect);
 }
 
 // 0x4EED10 UIQRCarSelect::ScrollLists
+//
+// A category picked here is handed to the game's own tail at 0x4EEF77, the code every branch of
+// ScrollLists ends in. It stores the category for the player, rebuilds the list, refreshes the
+// header, and then does what setting the category by hand had skipped: the online race mode
+// plate shown for the online cars and hidden for the rest, with the selected slot's mode on it
+// (SetOnlineSlotInfo), and the career markers online. Without it the plate kept whatever the last
+// category had put on it. The tail expects the category in eax, this in esi and the caller's esi
+// on the stack, as the prologue leaves them, and ends in pop esi / ret 4, so it is entered as a
+// call with a return into AfterTail and a dummy argument for its ret 4 to take.
 void __declspec(naked) UIQRCarSelect_ScrollListsCodeCave()
 {
 	_asm
@@ -469,7 +489,7 @@ void __declspec(naked) UIQRCarSelect_ScrollListsCodeCave()
 		push ecx                                   // preserve this
 		push dword ptr[esp + 8]                    // message
 		mov ecx, [esp + 4]                         // this
-		call UIQRCarSelect_ScrollLists     // __fastcall: ecx = this, stack = message
+		call UIQRCarSelect_NextCategory    // __fastcall: ecx = this, stack = message
 		pop ecx                                    // restore this
 		test eax, eax
 		jnz Handled
@@ -482,6 +502,18 @@ void __declspec(naked) UIQRCarSelect_ScrollListsCodeCave()
 		jmp edx
 
 		Handled :
+		push ecx                                   // this, for after the tail
+		push 0                                     // taken by the tail's ret 4
+		push offset AfterTail
+		push esi                                   // the tail ends in pop esi
+		mov esi, ecx
+		push 0x4EEF77
+		retn
+
+		AfterTail :
+		pop ecx                                    // this
+		push ecx
+		call UIQRCarSelect_AfterCategoryChange     // __stdcall
 		retn 0x4
 	}
 }
@@ -881,6 +913,29 @@ void __declspec(naked) FindPresetCarWhenTuningForIngameCarCodeCave()
 // "Stock cars" over a preset category.
 #define OffsetOfPackageName 0x04
 
+// Borrowing the plate means printing a name into its RACEMODE caption and hiding RACEMODE_DATA,
+// the value SetOnlineSlotInfo (0x497F20) fills in. FEPrintf leaves the caption's language hash at
+// +60h alone and only flags the text as set by hand (bit 2 at +1Ch), so setting the same hash
+// again (FEngSetLanguageHash, 0x50C900) brings back the game's own caption.
+#define OffsetOfFEObjectType   0x18 // 2 is a string, as FEPrintf checks
+#define OffsetOfFEObjectFlags  0x1C
+#define OffsetOfFEStringLangHash 0x60
+
+void PresetCars_RestoreRacePlate(const char* Pkg)
+{
+	BYTE* Caption = (BYTE*)FEngFindObject(Pkg, hashof_racemode);
+
+	if (Caption && *(int*)(Caption + OffsetOfFEObjectType) == 2
+		&& (*(DWORD*)(Caption + OffsetOfFEObjectFlags) & 2))
+	{
+		DWORD LanguageHash = *(DWORD*)(Caption + OffsetOfFEStringLangHash);
+		if (LanguageHash) FEngSetLanguageHash_obj((DWORD*)Caption, LanguageHash);
+	}
+
+	DWORD* Value = (DWORD*)FEngFindObject(Pkg, hashof_racemodevalue);
+	if (Value) FEngSetVisible(Value);
+}
+
 void __stdcall UIQRCarSelect_PostRefreshHeader(DWORD* UIQRCarSelect)
 {
 	const char* Pkg = *(const char**)((BYTE*)UIQRCarSelect + OffsetOfPackageName);
@@ -892,12 +947,6 @@ void __stdcall UIQRCarSelect_PostRefreshHeader(DWORD* UIQRCarSelect)
 
 	bool OurCategory = (carSelectCategory & PRESET_GROUP_MASK) != 0;
 
-	if (!OurCategory && (OnlinePackage || !ShowCarNamesEverywhere))
-	{
-		if (!OnlinePackage) FEngSetInvisible_Pkg(Pkg, hashof_OL_CarMode_Group);
-		return;
-	}
-
 	if (OurCategory)
 	{
 		int CategoryGroup = 0;
@@ -906,6 +955,21 @@ void __stdcall UIQRCarSelect_PostRefreshHeader(DWORD* UIQRCarSelect)
 			if (carSelectCategory == PRESET_GROUP_BIT(g)) { CategoryGroup = g; break; }
 
 		FEPrintf(Pkg, hashof_carselect_category_label, "%s", PresetGroupNames[CategoryGroup]);
+	}
+
+	// The plate carries a name only when asked to: a preset's in our categories with
+	// ShowPresetNames, a car's in the quick race ones with ShowCarNames.
+	bool ShowName = OurCategory ? ShowPresetNames : (!OnlinePackage && ShowCarNamesEverywhere);
+
+	if (!ShowName)
+	{
+		PresetCars_RestoreRacePlate(Pkg);
+
+		// Quick race has no use for the plate. Online it belongs to the game in its own
+		// categories, and in ours there is nothing for it to show.
+		if (!OnlinePackage || OurCategory) FEngSetInvisible_Pkg(Pkg, hashof_OL_CarMode_Group);
+
+		return;
 	}
 
 	// Reuse the online ranked-car "race mode" label group to show the preset name
