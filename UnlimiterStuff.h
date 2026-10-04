@@ -91,13 +91,17 @@ int Init()
 	NFSU2UnlimiterSettingsINIFile.read(Settings);
 
 	// Main
-	ReplacementCar = mINI_ReadInteger(Settings, "Main", "ReplacementCar",
-		mINI_ReadInteger(Settings, "Main", "ReplacementModel", 1)); 
+	// ReplacementCar lives in [Debug] now; [Main] and the older ReplacementModel still count.
+	ReplacementCar = mINI_ReadInteger(Settings, "Debug", "ReplacementCar",
+		mINI_ReadInteger(Settings, "Main", "ReplacementCar",
+		mINI_ReadInteger(Settings, "Main", "ReplacementModel", 1)));
 	AllNewCarsInitiallyUnlocked = mINI_ReadInteger(Settings, "Main", "AllNewCarsInitiallyUnlocked", 0) != 0;
 	AllNewCarsCanBeDrivenByAI = mINI_ReadInteger(Settings, "Main", "AllNewCarsCanBeDrivenByAI", 0) != 0;
 	RandomNameHook = mINI_ReadInteger(Settings, "Main", "RandomNameHook",
 		mINI_ReadInteger(Settings, "Main", "EnableRandomNameHook", 1)) != 0;
 	SeparateRims = mINI_ReadInteger(Settings, "Main", "SeparateRims", 1) != 0;
+	AddOnOpponentsPartsFix = mINI_ReadInteger(Settings, "Main", "ForceStockPartsOnAddOnOpponents",
+		mINI_ReadInteger(Settings, "Misc", "ForceStockPartsOnAddOnOpponents", 0)) != 0;
 
 	// Fixes
 	DisappearingWheelsFix = mINI_ReadInteger(Settings, "Fixes", "DisappearingWheelsFix", 1) != 0;
@@ -108,27 +112,30 @@ int Init()
 	StreamingTrafficCarManagerFix = mINI_ReadInteger(Settings, "Fixes", "StreamingTrafficCarManagerFix", 0) != 0;
 	AccumulateTireOffsets = mINI_ReadInteger(Settings, "Fixes", "AccumulateTireOffsets", 1) != 0;
 	HiddenSpecialtiesInGarage = ParseHiddenSpecialties(mINI_ReadString(Settings, "Fixes", "HideSpecialtiesInGarage", "0"));
-	EngineSFXGuard = mINI_ReadInteger(Settings, "Fixes", "EngineSFXGuard", 1) != 0;
-	AIEngineBankFix = mINI_ReadInteger(Settings, "Fixes", "AIEngineBankFix", 1) != 0;
 
 	// Sound
 	CarSoundTunerEnabled = mINI_ReadInteger(Settings, "Sound", "CarSoundTuner", 1) != 0;
 	BigFileVFSHandlePoolSize = mINI_ReadInteger(Settings, "Sound", "BigFileVFSHandlePoolSize", 64);
-	SerializeBigFileVFS = mINI_ReadInteger(Settings, "Sound", "SerializeBigFileVFS", 1) != 0;
+
+	// Part of the Car Sound Tuner rather than settings of their own. Each car getting its own engine
+	// bank is what makes the AI swap audible, what the freed engine sfx guard was caught under, and
+	// what keeps three threads opening sound files through the big file VFS at once.
+	AIEngineBankFix = CarSoundTunerEnabled;
+	EngineSFXGuard = CarSoundTunerEnabled;
+	SerializeBigFileVFS = CarSoundTunerEnabled;
 	SkipLegacyCSTCheck = mINI_ReadInteger(Settings, "Sound", "SkipLegacyCSTCheck", 0) != 0;
 	ForceUpgradeFromLegacyCST = mINI_ReadInteger(Settings, "Sound", "UpgradeFromLegacyCST", 0) != 0;
 	UseLegacyCSTData = mINI_ReadInteger(Settings, "Sound", "UseLegacyCSTData", 0) != 0;
-	ExportCarSoundData = mINI_ReadInteger(Settings, "Sound", "ExportCarSoundData", 0) != 0;
+	ExportCarSoundData = mINI_ReadInteger(Settings, "Debug", "ExportCarSoundData",
+		mINI_ReadInteger(Settings, "Sound", "ExportCarSoundData", 0)) != 0;
 
 	// Misc
 	ExpandMemoryPools = mINI_ReadInteger(Settings, "Misc", "ExpandMemoryPools", 1) != 0;
-	AddOnOpponentsPartsFix = mINI_ReadInteger(Settings, "Misc", "ForceStockPartsOnAddOnOpponents", 0) != 0;
 	ExtendFeCarLimits = mINI_ReadInteger(Settings, "Misc", "ExtendFeCarLimits", 1) != 0;// Doubles the amount of stock and tuned cars a player can have in a profile.
 	StaticCameraGenericFallback = mINI_ReadInteger(Settings, "Misc", "StaticCameraGenericFallback", 1) != 0;
 	SortStockCarsByStage = mINI_ReadInteger(Settings, "Misc", "SortStockCarsByStage", 0) != 0;
 	FilterDecalsByInitials = Clamp(mINI_ReadInteger(Settings, "Misc", "FilterDecalsByInitials", 1), 0, 2);
 	HoodDecalsOnCustomHoods = mINI_ReadInteger(Settings, "Misc", "HoodDecalsOnCustomHoods", 1) != 0;
-	GarageShowsOwnedPartsOnly = mINI_ReadInteger(Settings, "Misc", "GarageShowsOwnedPartsOnly", 0) != 0;
 	ShowDebugCarCustomize = mINI_ReadInteger(Settings, "Misc", "ShowDebugCarCustomize", 0) != 0;
 
 	if (!ShowDebugCarCustomize && GetModuleHandleA("NFSU2ExtraOptions.asi")) // Also check ExOpts
@@ -762,7 +769,11 @@ int Init()
 
 		if (ExportCarSoundData)
 		{
-			Settings["Sound"]["ExportCarSoundData"] = std::to_string(0); // Disable after export
+			// Disable after export, wherever the file has it: [Debug], or [Sound] in an older one
+			for (const char* Section : { "Debug", "Sound" })
+				if (Settings.has(Section) && Settings[Section].has("ExportCarSoundData"))
+					Settings[Section]["ExportCarSoundData"] = std::to_string(0);
+
 			NFSU2UnlimiterSettingsINIFile.write(Settings, true);
 		}
 

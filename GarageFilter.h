@@ -35,8 +35,6 @@
 // was installed without a purchase ever being recorded. Hiding that would take a part off the car
 // with no way to put it back.
 
-bool GarageShowsOwnedPartsOnly = false;
-
 // GetCurrentCareerCar ends in retn 4, so it takes the career car key as a stack argument and cleans
 // it up itself. Declaring it without one made every call eat four bytes of the caller's stack.
 DWORD* (__thiscall* PlayerCareerState_GetCurrentCareerCar)(DWORD* This, DWORD CareerCarKey) = (DWORD * (__thiscall*)(DWORD*, DWORD))0x503680;
@@ -107,7 +105,6 @@ bool ShouldHideInGarage(int CarSlotID, DWORD* CarPart, bool IsSpecialtyList, boo
 	bool IsFirst = First;
 	First = false;
 
-	if (!GarageShowsOwnedPartsOnly) return false;
 	if (!CarPart) return false;
 
 	bool InGarage = IsCustomizingFromGarage();
@@ -115,7 +112,7 @@ bool ShouldHideInGarage(int CarSlotID, DWORD* CarPart, bool IsSpecialtyList, boo
 	bool Installed = RideInfo_GetPart((DWORD*)gCarCustomizeManager + 592, CarSlotID) == CarPart;
 	bool Owned = CareerCar ? OwnedPartInventory_OwnsCarPart(CareerCar + 0x434 / 4, CarSlotID, CarPart) : false;
 
-	bool Hide = GarageShowsOwnedPartsOnly && InGarage && CareerCar
+	bool Hide = InGarage && CareerCar
 		&& !Installed && !Owned && !IsFirst
 		&& (IsSpecialtyList || IsGarageOwnershipSlot(CarSlotID));
 
