@@ -921,7 +921,16 @@ void __declspec(naked) FindPresetCarWhenTuningForIngameCarCodeCave()
 #define OffsetOfFEObjectFlags  0x1C
 #define OffsetOfFEStringLangHash 0x60
 
-void PresetCars_RestoreRacePlate(const char* Pkg)
+// The game shows the plate only for the online cars category, and always in the online car lot
+// (0x4EEFA9 and the constructor at 0x4FA056); everywhere else it hides OL_CarMode_Group.
+bool PresetCars_GameShowsRacePlate(const char* Pkg, bool OnlinePackage)
+{
+	if (!OnlinePackage) return false;
+
+	return carSelectCategory == 0x10 || _stricmp(Pkg, "UI_OLCarLot.fng") == 0;
+}
+
+void PresetCars_RestoreRacePlate(const char* Pkg, bool OnlinePackage)
 {
 	BYTE* Caption = (BYTE*)FEngFindObject(Pkg, hashof_racemode);
 
@@ -932,8 +941,16 @@ void PresetCars_RestoreRacePlate(const char* Pkg)
 		if (LanguageHash) FEngSetLanguageHash_obj((DWORD*)Caption, LanguageHash);
 	}
 
+	// The value goes back on screen only where the game shows the plate. Hiding the group does not
+	// take it along, so showing it everywhere left the last slot's mode, "Circuit" and the like,
+	// floating without its plate over the all cars and stock cars categories.
 	DWORD* Value = (DWORD*)FEngFindObject(Pkg, hashof_racemodevalue);
-	if (Value) FEngSetVisible(Value);
+
+	if (Value)
+	{
+		if (PresetCars_GameShowsRacePlate(Pkg, OnlinePackage)) FEngSetVisible(Value);
+		else FEngSetInvisible_Pkg(Pkg, hashof_racemodevalue);
+	}
 }
 
 void __stdcall UIQRCarSelect_PostRefreshHeader(DWORD* UIQRCarSelect)
@@ -963,7 +980,7 @@ void __stdcall UIQRCarSelect_PostRefreshHeader(DWORD* UIQRCarSelect)
 
 	if (!ShowName)
 	{
-		PresetCars_RestoreRacePlate(Pkg);
+		PresetCars_RestoreRacePlate(Pkg, OnlinePackage);
 
 		// Quick race has no use for the plate. Online it belongs to the game in its own
 		// categories, and in ours there is nothing for it to show.
