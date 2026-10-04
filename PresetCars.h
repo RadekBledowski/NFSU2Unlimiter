@@ -869,13 +869,26 @@ void __declspec(naked) FindPresetCarWhenTuningForIngameCarCodeCave()
 #define OffsetOfUIElementPos       0x2C
 #define OffsetOfUIPosLeftOffset    0x1C
 
+// The same screen class runs the online and LAN car select, from UI_OLCarSelect.fng rather than
+// UI_QRCarSelect.fng, so the package is the screen's own, at +4, where RefreshHeader (0x4B2310)
+// takes it from too. Printing into the quick race package by name left the online header saying
+// "Stock cars" over a preset category.
+#define OffsetOfPackageName 0x04
+
 void __stdcall UIQRCarSelect_PostRefreshHeader(DWORD* UIQRCarSelect)
 {
+	const char* Pkg = *(const char**)((BYTE*)UIQRCarSelect + OffsetOfPackageName);
+	if (!Pkg || !Pkg[0]) Pkg = "UI_QRCarSelect.fng";
+
+	// Online, the race mode group is the game's own: it shows a ranked car's mode. It is only
+	// borrowed for a preset's name, and otherwise left to the game.
+	bool OnlinePackage = _stricmp(Pkg, "UI_QRCarSelect.fng") != 0;
+
 	bool OurCategory = (carSelectCategory & PRESET_GROUP_MASK) != 0;
 
-	if (!OurCategory && !ShowCarNamesEverywhere)
+	if (!OurCategory && (OnlinePackage || !ShowCarNamesEverywhere))
 	{
-		FEngSetInvisible_Pkg("UI_QRCarSelect.fng", hashof_OL_CarMode_Group);
+		if (!OnlinePackage) FEngSetInvisible_Pkg(Pkg, hashof_OL_CarMode_Group);
 		return;
 	}
 
@@ -886,11 +899,11 @@ void __stdcall UIQRCarSelect_PostRefreshHeader(DWORD* UIQRCarSelect)
 		for (int g = 0; g < PARTLINK_MAX_PRESET_GROUPS; g++)
 			if (carSelectCategory == PRESET_GROUP_BIT(g)) { CategoryGroup = g; break; }
 
-		FEPrintf("UI_QRCarSelect.fng", hashof_carselect_category_label, "%s", PresetGroupNames[CategoryGroup]);
+		FEPrintf(Pkg, hashof_carselect_category_label, "%s", PresetGroupNames[CategoryGroup]);
 	}
 
 	// Reuse the online ranked-car "race mode" label group to show the preset name
-	DWORD* Group = (DWORD*)FEngFindObject("UI_QRCarSelect.fng", hashof_OL_CarMode_Group);
+	DWORD* Group = (DWORD*)FEngFindObject(Pkg, hashof_OL_CarMode_Group);
 	if (Group)
 	{
 		FEngSetVisible(Group);
@@ -898,7 +911,7 @@ void __stdcall UIQRCarSelect_PostRefreshHeader(DWORD* UIQRCarSelect)
 		FEngSetScript_Obj(Group, "SHOW", 0);
 	}
 
-	FEngSetInvisible_Pkg("UI_QRCarSelect.fng", hashof_racemodevalue);
+	FEngSetInvisible_Pkg(Pkg, hashof_racemodevalue);
 
 	DWORD* SelectedEntry = (DWORD*)*(DWORD*)((BYTE*)UIQRCarSelect + OffsetOfCurrentSelectedCar);
 	if (!SelectedEntry) return;
@@ -926,7 +939,7 @@ void __stdcall UIQRCarSelect_PostRefreshHeader(DWORD* UIQRCarSelect)
 
 			if (bStringHash(Buf) != Hash) continue;
 
-			FEPrintf("UI_QRCarSelect.fng", hashof_racemode, "%s", TypeName);
+			FEPrintf(Pkg, hashof_racemode, "%s", TypeName);
 			HasName = true;
 			break;
 		}
@@ -940,13 +953,13 @@ void __stdcall UIQRCarSelect_PostRefreshHeader(DWORD* UIQRCarSelect)
 
 				if (bStringHash(Buf) != Hash) continue;
 
-				FEPrintf("UI_QRCarSelect.fng", hashof_racemode, "%s", Buf);
+				FEPrintf(Pkg, hashof_racemode, "%s", Buf);
 				HasName = true;
 				break;
 			}
 		}
 
-		if (!HasName) FEPrintf("UI_QRCarSelect.fng", hashof_racemode, ""); // If we couldn't find the name, leave it empty
+		if (!HasName) FEPrintf(Pkg, hashof_racemode, ""); // If we couldn't find the name, leave it empty
 	}
 	else
 	{
@@ -960,7 +973,7 @@ void __stdcall UIQRCarSelect_PostRefreshHeader(DWORD* UIQRCarSelect)
 			int Type = PresetEntryCarType(SlotHash);
 			char const* TypeName = (Type >= 0 && Type < CarCount) ? GetCarTypeName(Type) : nullptr;
 
-			FEPrintf("UI_QRCarSelect.fng", hashof_racemode, "%s", TypeName ? TypeName : "");
+			FEPrintf(Pkg, hashof_racemode, "%s", TypeName ? TypeName : "");
 		}
 		else
 		{
@@ -974,11 +987,11 @@ void __stdcall UIQRCarSelect_PostRefreshHeader(DWORD* UIQRCarSelect)
 
 			const char* Text = (Override && Override->DisplayName[0]) ? Override->DisplayName : Preset->Name;
 
-			FEPrintf("UI_QRCarSelect.fng", hashof_racemode, "%s", Text);
+			FEPrintf(Pkg, hashof_racemode, "%s", Text);
 		}
 	}
 
-	DWORD* Label = (DWORD*)FEngFindObject("UI_QRCarSelect.fng", hashof_racemode);
+	DWORD* Label = (DWORD*)FEngFindObject(Pkg, hashof_racemode);
 	if (Label)
 	{
 		BYTE* Pos = *(BYTE**)((BYTE*)Label + OffsetOfUIElementPos);
