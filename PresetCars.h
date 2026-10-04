@@ -208,6 +208,12 @@ bool PresetIsCodeEntered(const char* Code)
 
 bool PresetUnlockSatisfied(int Condition, const char* Value)
 {
+	// The game's own unlock everything flag (set by ExtraOptions' UnlockAllThings, among others).
+	// UnlockSystem::IsCarUnlocked answers yes to every car when it is set (0x534181), which is why
+	// quick race's own sponsor category is full with it on, so the presets follow it too rather
+	// than staying behind their codes and career events.
+	if (*(bool*)_UnlockAllThings) return true;
+
 	switch (Condition)
 	{
 	case PRESET_UNLOCK_CODE:
