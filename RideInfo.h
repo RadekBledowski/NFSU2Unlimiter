@@ -620,6 +620,24 @@ DWORD* FindPartWithLevel(int CarType, unsigned int slot_id, int upgrade_level)
     return result;
 }
 
+// The brake half of RideInfo::SyncVisualPartsWithPhysics on its own. The game picks the visual
+// brake level from which brake performance part is installed, first match winning (0x639C74):
+// part 28h level 1, 29h level 2, 2Bh level 3, none level 0, read as
+// PhysicsUpgradeSpecification::IsPartInstalled (0x599610) does, a byte at +50h + part in the
+// specification at RideInfo+2F0h. Only FRONT_BRAKE is set, as the game sets only that one.
+void RideInfo_SyncBrakesWithPhysics(DWORD* RideInfo, int CarType)
+{
+    const BYTE* Installed = (const BYTE*)RideInfo + 0x2F0 + 0x50;
+
+    int Level = Installed[0x28] ? 1 : Installed[0x29] ? 2 : Installed[0x2B] ? 3 : 0;
+
+    DWORD* Brake = FindPartWithLevel(CarType, CARSLOTID_FRONT_BRAKE, Level);
+    if (!Brake) return;
+
+    RideInfo[356 + CARSLOTID_FRONT_BRAKE] = (DWORD)Brake;
+    RideInfo_UpdatePartsEnabled(RideInfo, nullptr);
+}
+
 void __fastcall RideInfo_SyncVisualPartsWithPhysics_Hook(DWORD* RideInfo, void* EDX_Unused, bool perf, bool random)
 {
     if (!RideInfo || ((uintptr_t)RideInfo & 3)) return;
@@ -637,6 +655,8 @@ void __fastcall RideInfo_SyncVisualPartsWithPhysics_Hook(DWORD* RideInfo, void* 
 
     if (M.SyncVisualPartsWithPhysics)
         RideInfo_SyncVisualPartsWithPhysics(RideInfo, perf, random);
+    else if (M.SyncBrakesWithPhysics)
+        RideInfo_SyncBrakesWithPhysics(RideInfo, CarType); // the whole game function would also set the engine
 
     if (!M.SyncBrakesWithPhysics)
     {
