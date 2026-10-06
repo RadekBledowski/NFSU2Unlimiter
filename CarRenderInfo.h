@@ -295,6 +295,8 @@ void __declspec(naked) CarRenderInfo_Render_AnimLocationForExtraAttachmentCodeCa
 		mov esi_backup, esi
 		mov esi, dword ptr ds: [esp + 0x58]
 		mov CarRenderInfo, esi
+		mov PartAnim_RenderCarRenderInfo, esi // for the part's animation set (PartAnimations.h)
+		mov PartAnim_RenderSlotPiece, eax
 		pushad
 	}
 

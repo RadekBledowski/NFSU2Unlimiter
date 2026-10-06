@@ -28,6 +28,7 @@ char AttachmentNameBuf[64];
 #include "CarTypeInfo.h"
 #include "CarPart.h"
 #include "CarPartDatabase.h"
+#include "PartAnimations.h"
 #include "CarRenderInfo.h"
 #include "RideInfo.h"
 #include "eViewPlatInterface.h"
@@ -756,6 +757,7 @@ int Init()
 	InitEngineSFXGuard();
 	InitAIEngineBank();
 	InitNetCarData();
+	InitPartAnimations();
 	
 	if (BigFileVFSHandlePoolSize > 127) BigFileVFSHandlePoolSize = 64;
 	injector::WriteMemory<BYTE>(0x486531, BigFileVFSHandlePoolSize, true);

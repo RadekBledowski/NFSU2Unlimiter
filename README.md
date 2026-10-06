@@ -27,6 +27,9 @@ Features:
 	- FRONT_TIRE_OFFSET (Floating) : Adds offset (spacers) to the front wheels. This attribute can be added to Fender and Wide Body parts.
 	- REAR_TIRE_OFFSET (Floating) : Adds offset (spacers) to the rear wheels. This attribute can be added to Quarter Panel and Wide Body parts.
 + Implements use of strings for AI Opponent names like later games and adds 150+ names from credits.
++ Lets a part open its own way. An animation set is a car's parts animations under a name of its own, in `CARS\<CAR>\PARTS_ANIMATIONS_<ANYTHING>.BIN` next to the car's (`Tools\PartAnimSet.py` makes one from the car's file, then edit it in PartAnimatorulator), and a part picks it with a Key attribute naming it:
+	- ANIM_HOOD, ANIM_TRUNK, ANIM_LEFT_DOOR, ANIM_RIGHT_DOOR (Key) : The set everything at that location opens with, pivots included. Looked for on the location's own part, then the door style part for doors, then the body kit.
+	- ANIM_HOOD2, ANIM_TRUNK2, ANIM_LEFT_DOOR2, ANIM_RIGHT_DOOR2 (Key) : The set for the second piece of the location's own part, for example a trunk split in two like the split hoods.
 
 Also check out:
 - [NFS Mods with Unlimiter (v3+) & Extended Customization Support](https://docs.google.com/spreadsheets/d/1BYqui01raMMtRGrJ63-2B-Agh9ag6RdPB-bd07pDIKI/edit#gid=0)
