@@ -11,6 +11,9 @@ Features:
 	- ShowTrunkUnderInFE: Shows inside of the trunk while in menus.
 	- RemoveCentreBrakeWithCustomSpoiler: Removes centre brakelight position marker when a custom spoiler is installed.
 	- HasSunroof: Swaps KIT00_ROOF with KIT00_FULLROOF when a roof scoop is installed.
+	- LinkSpoiler: Where the spoiler sits and what it moves with: the base's SPOILER marker, opening with the trunk as the game does (0), the trunk part's SPOILER marker (1), or the base's marker without moving (2).
+	- LinkCabinNeonToRoof: Takes the cabin neon markers from the roof part instead of the base.
+	- LinkRoofScoopToRoof: Takes the ROOF_SCOOP marker from the roof part instead of the base.
 + Fixes missing objects for options and stuff in FNGs by cloning them.
 + Allows the events to have specific engage messages in any stage. (The game did it only for Stage 0 by default.)
 + Adds new customization items to the menu. (Fully configurable via car-specific or general ini files.) (Parts should get added by modders.)

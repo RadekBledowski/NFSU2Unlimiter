@@ -683,6 +683,10 @@ int Init()
 
 	// Check CarRenderInfo::Render data
 	injector::MakeJMP(0x6253ED, LinkLicensePlateToTrunkCodeCave, true); // LinkLicensePlateToTrunk
+	injector::MakeCALL(0x635021, CarRenderInfo_GetBaseMarkerCodeCave, true); // LinkSpoiler, CarRenderInfo::UpdateCarParts
+	injector::MakeCALL(0x635033, CarRenderInfo_GetBaseMarkerCodeCave, true); // LinkRoofScoopToRoof, CarRenderInfo::UpdateCarParts
+	injector::MakeRangedNOP(0x6359AC, 0x6359B2, true);
+	injector::MakeJMP(0x6359AC, CarRenderInfo_GetCabinNeonModelCodeCave, true); // LinkCabinNeonToRoof, CarRenderInfo::UpdateCarParts
 	injector::MakeCALL(0x62331B, ShowTrunkUnderInFE, true); // ShowTrunkUnderInFE
 	injector::MakeCALL(0x623479, ShowTrunkUnderInFE, true); // ShowTrunkUnderInFE
 	//injector::MakeCALL(0x615817, RemoveCentreBrakeWithCustomSpoiler, true); // RemoveCentreBrakeWithCustomSpoiler

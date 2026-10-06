@@ -260,6 +260,10 @@ CarRenderInfoExtra* CarRenderInfo_GetExtra(DWORD* CarRenderInfo)
 
 int AnimLocationForExtraAttachment(int CarType, int CarSlotID, int orig)
 {
+	// LinkSpoiler 2: the spoiler stays where its marker puts it instead of following the trunk.
+	if (CarSlotID == CARSLOTID_SPOILER && CarConfigs[CarType].RenderInfo.LinkSpoiler == 2)
+		return -1;
+
 	BodyShopSection& B = CarConfigs[CarType].BodyShop;
 
 	bool ExtraEnabled[6] = {
@@ -316,6 +320,92 @@ void __declspec(naked) CarRenderInfo_Render_AnimLocationForExtraAttachmentCodeCa
 		mov ecx, AnimLoc
 		mov eax, dword ptr ds : [esp + 0xC8]
 		push 0x623463
+		retn
+	}
+}
+
+// LinkSpoiler, LinkRoofScoopToRoof, LinkCabinNeonToRoof
+//
+// CarRenderInfo::UpdateCarParts (0x634800) takes the SPOILER and ROOF_SCOOP markers from the base
+// part's solid (0x63501A, into CarRenderInfo+2C04h and +2C08h) and the cabin neon markers,
+// CABIN_NEON_START_%d and CABIN_NEON_END_%d, from the base's model (0x6359AC, CarRenderInfo+17A8h).
+// Every slot's models are in by then (0x634A79), so a marker can come from another part's LOD A
+// model instead: the trunk's for the spoiler, the roof's for the roof scoop and the cabin neons.
+// When that part has no such marker, the base's is used as before.
+//
+// Where the spoiler goes is one thing, what it moves with another: the game's table (chunk
+// 0x34608) puts the SPOILER slot with the trunk, which is how the base's spoiler opens with the
+// trunk too. LinkSpoiler 2 takes it out of that (AnimLocationForExtraAttachment).
+
+#define CRI_Loc_Models 1514 // CarRenderInfo+17A8h: an eModel* for each slot * 2 + piece, 4 LODs each
+
+ePositionMarker* CarRenderInfo_FindSlotMarker(DWORD* CarRenderInfo, int CarSlotID, DWORD NameHash)
+{
+	eModel* Model = (eModel*)CarRenderInfo[CRI_Loc_Models + CarSlotID * 2 * 4]; // first piece, LOD A
+	if (!Model || !Model->Solid) return 0;
+	return eSolid_GetPositionMarker((DWORD*)Model->Solid, NameHash);
+}
+
+ePositionMarker* __stdcall CarRenderInfo_GetBaseMarker(DWORD NameHash, DWORD* BaseSolid, DWORD* CarRenderInfo)
+{
+	DWORD* RideInfo = (DWORD*)CarRenderInfo[1];
+	if (RideInfo)
+	{
+		CarRenderInfoSection& R = CarConfigs[RideInfo[0]].RenderInfo;
+		int From = -1;
+
+		if (NameHash == CT_bStringHash("SPOILER") && R.LinkSpoiler == 1) From = CARSLOTID_TRUNK;
+		else if (NameHash == CT_bStringHash("ROOF_SCOOP") && R.LinkRoofScoopToRoof) From = CARSLOTID_ROOF;
+
+		if (From >= 0)
+		{
+			ePositionMarker* Marker = CarRenderInfo_FindSlotMarker(CarRenderInfo, From, NameHash);
+			if (Marker) return Marker;
+		}
+	}
+
+	return eSolid_GetPositionMarker(BaseSolid, NameHash);
+}
+
+// 0x635021 (SPOILER) and 0x635033 (ROOF_SCOOP), CarRenderInfo::UpdateCarParts, in place of
+// eSolid::GetPositionMarker: the base's solid in ecx, the marker's hash on the stack and the
+// CarRenderInfo in ebx.
+void __declspec(naked) CarRenderInfo_GetBaseMarkerCodeCave()
+{
+	_asm
+	{
+		push ebx                   // CarRenderInfo
+		push ecx                   // the base's solid
+		push dword ptr[esp + 0x0C] // the marker's hash
+		call CarRenderInfo_GetBaseMarker
+		retn 4                     // as eSolid::GetPositionMarker
+	}
+}
+
+DWORD* __stdcall CarRenderInfo_GetCabinNeonModel(DWORD* CarRenderInfo)
+{
+	DWORD* RideInfo = (DWORD*)CarRenderInfo[1];
+
+	if (RideInfo && CarConfigs[RideInfo[0]].RenderInfo.LinkCabinNeonToRoof
+		&& CarRenderInfo_FindSlotMarker(CarRenderInfo, CARSLOTID_ROOF, CT_bStringHash("CABIN_NEON_START_0")))
+		return (DWORD*)CarRenderInfo[CRI_Loc_Models + CARSLOTID_ROOF * 2 * 4];
+
+	return (DWORD*)CarRenderInfo[CRI_Loc_Models]; // the base, as the game does
+}
+
+// 0x6359AC CarRenderInfo::UpdateCarParts: mov eax, [ebx+17A8h], the model the cabin neon markers
+// are looked for in. ecx holds a count the code after this uses.
+void __declspec(naked) CarRenderInfo_GetCabinNeonModelCodeCave()
+{
+	_asm
+	{
+		push ecx
+		push edx
+		push ebx // CarRenderInfo
+		call CarRenderInfo_GetCabinNeonModel
+		pop edx
+		pop ecx
+		push 0x6359B2
 		retn
 	}
 }

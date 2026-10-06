@@ -42,6 +42,9 @@ void LoadCarConfigs()
 	DefaultCarConfig.RenderInfo.ShowTrunkUnderInFE = mINI_ReadInteger(GeneralINI, "CarRenderInfo", "ShowTrunkUnderInFE", GetDefaultShowTrunkUnderInFE(ReplacementCar)) != 0;
 	DefaultCarConfig.RenderInfo.RemoveCentreBrakeWithCustomSpoiler = mINI_ReadInteger(GeneralINI, "CarRenderInfo", "RemoveCentreBrakeWithCustomSpoiler", GetDefaultRemoveCentreBrakeWithCustomSpoiler(ReplacementCar)) != 0;
 	DefaultCarConfig.RenderInfo.HasSunroof = mINI_ReadInteger(GeneralINI, "CarRenderInfo", "HasSunroof", GetDefaultHasSunroof(ReplacementCar)) != 0;
+	DefaultCarConfig.RenderInfo.LinkSpoiler = mINI_ReadInteger(GeneralINI, "CarRenderInfo", "LinkSpoiler", 0);
+	DefaultCarConfig.RenderInfo.LinkCabinNeonToRoof = mINI_ReadInteger(GeneralINI, "CarRenderInfo", "LinkCabinNeonToRoof", 0) != 0;
+	DefaultCarConfig.RenderInfo.LinkRoofScoopToRoof = mINI_ReadInteger(GeneralINI, "CarRenderInfo", "LinkRoofScoopToRoof", 0) != 0;
 
 	// PartLink
 	DefaultCarConfig.PartLinking.Enabled = mINI_ReadInteger(GeneralINI, "PartLink", "Enabled", 0) != 0;
@@ -649,6 +652,9 @@ void LoadCarConfigs()
 		ACarConfig.RenderInfo.ShowTrunkUnderInFE = mINI_ReadInteger(CarINI, "CarRenderInfo", "ShowTrunkUnderInFE", GetDefaultShowTrunkUnderInFE(i)) != 0;
 		ACarConfig.RenderInfo.RemoveCentreBrakeWithCustomSpoiler = mINI_ReadInteger(CarINI, "CarRenderInfo", "RemoveCentreBrakeWithCustomSpoiler", GetDefaultRemoveCentreBrakeWithCustomSpoiler(i)) != 0;
 		ACarConfig.RenderInfo.HasSunroof = mINI_ReadInteger(CarINI, "CarRenderInfo", "HasSunroof", GetDefaultHasSunroof(i)) != 0;
+		ACarConfig.RenderInfo.LinkSpoiler = mINI_ReadInteger(CarINI, "CarRenderInfo", "LinkSpoiler", DefaultCarConfig.RenderInfo.LinkSpoiler);
+		ACarConfig.RenderInfo.LinkCabinNeonToRoof = mINI_ReadInteger(CarINI, "CarRenderInfo", "LinkCabinNeonToRoof", DefaultCarConfig.RenderInfo.LinkCabinNeonToRoof) != 0;
+		ACarConfig.RenderInfo.LinkRoofScoopToRoof = mINI_ReadInteger(CarINI, "CarRenderInfo", "LinkRoofScoopToRoof", DefaultCarConfig.RenderInfo.LinkRoofScoopToRoof) != 0;
 
 		// PartLink
 		ACarConfig.PartLinking.Enabled = mINI_ReadInteger(CarINI, "PartLink", "Enabled", DefaultCarConfig.PartLinking.Enabled) != 0;

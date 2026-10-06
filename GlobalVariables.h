@@ -369,6 +369,9 @@ struct CarRenderInfoSection
 	bool ShowTrunkUnderInFE;
 	bool RemoveCentreBrakeWithCustomSpoiler;
 	bool HasSunroof;
+	int LinkSpoiler; // 0 the base's marker, moving with the trunk; 1 the trunk's marker; 2 the base's, still
+	bool LinkCabinNeonToRoof;
+	bool LinkRoofScoopToRoof;
 };
 
 struct PhysicsSection
