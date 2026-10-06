@@ -55,7 +55,7 @@ def make_chunk(cid, body):
 
 def cstr(buf, off):
     end = buf.index(b'\0', off)
-    return buf[off:end].decode('ascii')
+    return buf[off:end].decode('latin-1')  # also read where a pointer leads into data, not a name
 
 
 class Anim:
