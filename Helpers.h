@@ -309,6 +309,13 @@ int GetDefaultShowTrunkUnderInFE(int CarType)
 	return 0;
 }
 
+// The game asks the same question for the inside of the trunk and for the rear window decals, and
+// answers yes for the hatchbacks and SUVs, where the glass is part of the lid. Cars added later get no.
+int GetDefaultLinkRearWindowDecalToTrunk(int CarType)
+{
+	return GetDefaultShowTrunkUnderInFE(CarType);
+}
+
 int GetDefaultRemoveCentreBrakeWithCustomSpoiler(int CarType)
 {
 	switch (CarType)

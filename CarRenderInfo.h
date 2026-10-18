@@ -34,6 +34,15 @@ int ShowTrunkUnderInFE(int CarTypeID)
 	return CarConfigs[CarTypeID].RenderInfo.ShowTrunkUnderInFE;
 }
 
+// CarRenderInfo::Render calls the same function (0x60C8F0) for two things. ShowTrunkUnderInFE answers
+// the first, the inside of the trunk (0x62331B). The second (0x623479) puts the rear window decals on
+// the trunk's animation location, where the animation table leaves them on none, so that on a hatchback
+// the decal opens with the glass. On a car whose window stays put it drags the decal up with the lid.
+int LinkRearWindowDecalToTrunk(int CarTypeID)
+{
+	return CarConfigs[CarTypeID].RenderInfo.LinkRearWindowDecalToTrunk;
+}
+
 DWORD DoRemoveCentreBrakeWithCustomSpoiler = 0x615823;
 DWORD DontRemoveCentreBrakeWithCustomSpoiler = 0x61582B;
 

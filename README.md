@@ -9,6 +9,7 @@ Features:
 + Adds options to change car render information. (See UnlimiterData\_General.ini file.)
 	- LinkLicensePlateToTrunk: Attaches license plate to trunk for part animations.
 	- ShowTrunkUnderInFE: Shows inside of the trunk while in menus.
+	- LinkRearWindowDecalToTrunk: Makes the rear window decals open with the trunk, for cars whose rear window is part of the trunk lid.
 	- RemoveCentreBrakeWithCustomSpoiler: Removes centre brakelight position marker when a custom spoiler is installed.
 	- HasSunroof: Swaps KIT00_ROOF with KIT00_FULLROOF when a roof scoop is installed.
 + Fixes missing objects for options and stuff in FNGs by cloning them.
