@@ -772,6 +772,7 @@ int Init()
 	injector::WriteMemory<BYTE>(0x486531, BigFileVFSHandlePoolSize, true);
 	injector::WriteMemory<BYTE>(0x486541, BigFileVFSHandlePoolSize, true);
 	InitBigFileVFS();
+	InitSoundHeap();
 
 	if (CarSoundTunerEnabled)
 	{

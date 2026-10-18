@@ -1431,3 +1431,34 @@ void InitCarSoundTuner()
 		if (btn == IDNO) SetExitGameFlag(); // ExitTheGameFlag
 	}
 }
+
+// The heap every sound bank is loaded into is sized by one expression in the sound setup of
+// InitializeEverything (0x4859B0):
+//
+//   004859B9  and eax, 3FC000h    ; sound enabled ? 3FC000h : 0
+//   004859BE  add eax, 4000h      ; 400000h, so 4 MB
+//
+// Everything EA's mixer keeps in memory lives in it: the global banks, the player's engine, shifting
+// and turbo banks, one engine bank pair per opponent and both Ginsu files of every engine. Stock data
+// fits, because the biggest Ginsu file is 104 KB and the field shares three engine banks. Car Sound
+// Tuner data does not have to: a custom engine can ship Ginsu files two to three times that size and
+// AIEngineBankFix lets six opponents keep banks of their own.
+//
+// When a bank no longer fits, the allocator at 0x457A60 hands back null, EA's loader answers -6 for
+// that bank and the load queue never reaches its completion callback. Nothing reports it, the
+// loading screen just never ends.
+//
+// This has to go in with the rest of the patches. InitializeEverything calls the sound setup (0x57ED85)
+// right before it calls InitCarSoundTuner (0x57EDA3), so by the time that runs the heap is already built.
+constexpr int SoundHeapSize = 16 * 1024 * 1024;
+
+void InitSoundHeap()
+{
+	constexpr int VanillaSoundHeapMask = 0x3FC000; // 4 MB less the 16 KB that gets added back
+	constexpr int SoundHeapSizeAdd = 0x4000;
+
+	// 'and eax, imm32', checked so another executable build is left alone
+	if (injector::ReadMemory<BYTE>(0x4859B9, true) != 0x25 || injector::ReadMemory<int>(0x4859BA, true) != VanillaSoundHeapMask) return;
+
+	injector::WriteMemory<int>(0x4859BA, SoundHeapSize - SoundHeapSizeAdd, true);
+}
