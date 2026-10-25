@@ -159,7 +159,7 @@ int Init()
 	// Debug
 	DisableTextureReplacement = mINI_ReadInteger(Settings, "Debug", "DisableTextureReplacement", 0) != 0;
 	DisableMaterialBasedReplacement = mINI_ReadInteger(Settings, "Debug", "DisableMaterialBasedReplacement", 0) != 0;
-	DisableLightFlareColors = mINI_ReadInteger(Settings, "Debug", "DisableLightFlareColors", 0) != 0;
+	DisableLightFlareColors = mINI_ReadInteger(Settings, "Debug", "DisableLightFlareColors", 1) != 0;
 	DisableExhaustFlameAndTireSmoke = mINI_ReadInteger(Settings, "Debug", "DisableExhaustFlameAndTireSmoke", 0) != 0;
 	UseUnlimiterEmitter = mINI_ReadInteger(Settings, "Debug", "DisableUnlimiterEmitter", 0) == 0;
 	ForceLightFlaresOn = mINI_ReadInteger(Settings, "Debug", "ForceLightFlaresOn", 0);
