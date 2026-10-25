@@ -237,6 +237,7 @@ char const* GetCameraInfoForVinylGroup(unsigned int group)
 CameraInfo* GetPartCameraInfo(int CarTypeID, int CarSlotID)
 {
 	if (!UseCameraInfo) return 0;
+	if (CarTypeID < 0 || CarTypeID >= CarCount) return 0;
 
 	// Change car slot ID if we use a common camera info for this part
 	switch (CarSlotID)
@@ -315,6 +316,7 @@ CameraInfo* GetPartCameraInfo(int CarTypeID, int CarSlotID)
 CameraInfo* GetVinylCameraInfo(int CarTypeID, DWORD* TheCarPart)
 {
 	if (!UseCameraInfo) return 0;
+	if (CarTypeID < 0 || CarTypeID >= CarCount) return 0;
 
 	int CarSlotID = CARSLOTID_VINYL_LAYER0; // Get the CarSlotID from the part data
 	int VinylGroupIndex = *((BYTE*)TheCarPart + 5) & 0x1F; // Get the CarSlotID from the part data
@@ -354,6 +356,13 @@ CameraInfo* GetVinylCameraInfo(int CarTypeID, DWORD* TheCarPart)
 StaticCameraInfo* GetStaticCameraInfo(int CarTypeID)
 {
 	if (!UseCameraInfo) return 0;
+
+	// GarageMainScreen::HandleTick passes whatever its FrontEndRenderingCar holds as the car type, and a
+	// screen that has no car yet (an online lobby's car preview) holds the previous contents of a block
+	// the pool took back: 0xEEEEEEEE, or text such as "Padd" (0x64646150) in a crash dump. The game only
+	// compares that value, this one turns it into a name, and GetCarTypeName(0x64646150) is an address
+	// 0x80000000 past the car types: sprintf read it and the game died.
+	if (CarTypeID < 0 || CarTypeID >= CarCount) return 0;
 
 	// Check if we have car-specific static camera info
 	char CameraInfoName[MAX_PATH];

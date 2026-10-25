@@ -249,6 +249,10 @@ int LoaderCarInfo_Hook(bChunk* chunk)
 
 DWORD GetCarTypeLogoHash(int type, bool manu)
 {
+	// A screen showing a car that was never set (a lobby's car preview) asks with whatever its car
+	// type field holds. Hash nothing rather than index CarConfigs with it: no logo object has hash 0.
+	if (type < 0 || type >= CarCount) return 0;
+
 	DWORD result = 0;
 	int BuildRegion = GetBuildRegion();
 	char const* CarTypeName = (char const*)CarConfigs[type].CarTypeInfo;
