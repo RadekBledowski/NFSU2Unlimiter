@@ -115,10 +115,15 @@ void FixComputeMiscStats()
 			: *((float*)0x007FC1D8 + i);
 	}
 
-	// Fill the rest of the cars
+	// Fill the rest of the cars from the stock racers, one after the other. The stock table is 0 for cars 31 to 45, the
+	// traffic: ComputeMiscStats stores the time it simulated times this factor, and goes on simulating until all three of its
+	// results are not 0, so a car that took a 0 ran the simulation to its limit every time its stats were built, a hitch in the
+	// car select on every add-on whose id came to 31 to 45 modulo 46 (ids 77 to 91 and on, seen with 300 car types).
+	const int StockRacers = 31;
+
 	for (int i = 46, j = 0; i < CarCount; i++, j++)
 	{
-		if (j > 45)
+		if (j >= StockRacers)
 		{
 			j = 0;
 		}
