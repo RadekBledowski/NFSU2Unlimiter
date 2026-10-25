@@ -613,7 +613,7 @@ int Init()
 
 		// Neon texture
 		hb_GetTextureInfo.fun = injector::MakeCALL(0x638858, GetNeonTextureInfo, true).get(); // CarRenderInfo::ctor
-		injector::MakeRangedNOP(0x638868, 0x63886E, true); // Prevent the game from changing it back to original
+		injector::MakeRangedNOP(0x638868, 0x63886E, true); // Prevent the game from changing it back to original (CarRenderInfo_ctor_Hook clears the field first)
 
 		// Material-based texture replacements (used for tires)
 		if (!DisableMaterialBasedReplacement)

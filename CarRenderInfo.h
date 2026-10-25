@@ -2541,6 +2541,13 @@ DWORD * __fastcall CarRenderInfo_ctor_Hook(DWORD *CarRenderInfo, void* EDX_Unuse
 	CarRenderInfoExtra* extra = new CarRenderInfoExtra(CarRenderInfo, RideInfo, Car);
 	CarRenderInfo[CRI_Loc_Extra] = (DWORD)extra;
 	
+	// The game stores the neon texture info in CarRenderInfo[209] (+0x344) at 0x638868. Unlimiter takes that store out (see
+	// UnlimiterStuff.h) and sets the field itself, but only for a car that has a neon part. The constructor goes on to read the
+	// field at 0x6388C7 and writes through it, and the block is not cleared when it is allocated (Car::InitRenderInfo takes it
+	// from the pool), so a car with no neon part dereferenced whatever the block held last: 0xEEEEEEEE or 0x46A in crash dumps,
+	// an access violation at 0x6388D1 when the main menu car changed to a car with no neon (seen with a 3000GT on UG2NET).
+	CarRenderInfo[209] = 0;
+
 	// Call the original constructor
 	DWORD *result = hb_CarRenderInfo_ctor.fun(CarRenderInfo, EDX_Unused ,RideInfo, Car);
 
